@@ -1,0 +1,58 @@
+import { getTranslations } from "next-intl/server";
+import { requireModule } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { currentMonth, monthToDate } from "@/lib/billing";
+import { BillingBoard, type BillRow } from "@/components/billing/billing-board";
+
+export default async function BillingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>;
+}) {
+  await requireModule("billing");
+  const supabase = await createClient();
+  const sp = await searchParams;
+  const month = /^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : currentMonth();
+  const billing_month = monthToDate(month);
+
+  const { data: contractsData } = await supabase
+    .from("contracts")
+    .select("id, room:rooms(room_number), tenant:tenants(full_name)")
+    .eq("status", "ACTIVE");
+  const { data: billsData } = await supabase
+    .from("bills")
+    .select("id, contract_id, status, total_amount")
+    .eq("billing_month", billing_month);
+
+  const billMap = new Map(
+    (billsData ?? []).map((b) => [b.contract_id as string, b])
+  );
+  const contracts = (contractsData ?? []) as unknown as Array<{
+    id: string;
+    room: { room_number: string } | null;
+    tenant: { full_name: string } | null;
+  }>;
+
+  const rows: BillRow[] = contracts
+    .map((c) => {
+      const b = billMap.get(c.id);
+      return {
+        contractId: c.id,
+        room: c.room?.room_number ?? "—",
+        tenant: c.tenant?.full_name ?? "—",
+        bill: b
+          ? { id: b.id as string, status: b.status as string, total: String(b.total_amount) }
+          : null,
+      };
+    })
+    .sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }));
+
+  const t = await getTranslations("billing");
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+      <BillingBoard month={month} rows={rows} />
+    </div>
+  );
+}
