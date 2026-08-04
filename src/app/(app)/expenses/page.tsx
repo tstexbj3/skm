@@ -25,7 +25,6 @@ export default async function ExpensesPage() {
     .select(
       "id, category, amount, description, expense_date, status, is_common_area, bill_image_url, item_image_url, room:rooms(room_number)"
     )
-    .neq("status", "VOID")
     .order("expense_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(200);

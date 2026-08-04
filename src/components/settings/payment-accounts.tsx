@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
@@ -41,6 +42,7 @@ export type AccountRow = {
 
 export function PaymentAccounts({ accounts }: { accounts: AccountRow[] }) {
   const t = useTranslations("settings");
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<AccountRow | null>(null);
@@ -54,6 +56,7 @@ export function PaymentAccounts({ accounts }: { accounts: AccountRow[] }) {
       const res = await addPaymentAccount({}, formData);
       if (res.error)
         setError(t.has(`errors.${res.error}`) ? t(`errors.${res.error}`) : res.error);
+      else router.refresh();
     });
   }
 
@@ -63,6 +66,7 @@ export function PaymentAccounts({ accounts }: { accounts: AccountRow[] }) {
       fd.set("id", id);
       fd.set("active", String(active));
       await togglePaymentAccount({}, fd);
+      router.refresh();
     });
   }
 
@@ -198,6 +202,7 @@ function EditDialog({
   onClose: () => void;
 }) {
   const t = useTranslations("settings");
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(0);
@@ -207,8 +212,10 @@ function EditDialog({
     setError(null);
     startTransition(async () => {
       const res = await updatePaymentAccount({}, formData);
-      if (res.ok) onClose();
-      else setError(t.has(`errors.${res.error}`) ? t(`errors.${res.error}`) : res.error ?? "error");
+      if (res.ok) {
+        router.refresh();
+        onClose();
+      } else setError(t.has(`errors.${res.error}`) ? t(`errors.${res.error}`) : res.error ?? "error");
     });
   }
 
@@ -261,6 +268,7 @@ function DeleteDialog({
   onClose: () => void;
 }) {
   const t = useTranslations("settings");
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -270,8 +278,10 @@ function DeleteDialog({
       const fd = new FormData();
       fd.set("id", account.id);
       const res = await deletePaymentAccount({}, fd);
-      if (res.ok) onClose();
-      else setError(t.has(`errors.${res.error}`) ? t(`errors.${res.error}`) : res.error ?? "error");
+      if (res.ok) {
+        router.refresh();
+        onClose();
+      } else setError(t.has(`errors.${res.error}`) ? t(`errors.${res.error}`) : res.error ?? "error");
     });
   }
 

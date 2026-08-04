@@ -64,7 +64,10 @@ export function PaymentsTable({
           </thead>
           <tbody>
             {rows.map((p) => (
-              <tr key={p.id} className="border-t">
+              <tr
+                key={p.id}
+                className={cn("border-t", p.status === "VOID" && "opacity-50")}
+              >
                 <td className="px-4 py-2">
                   <span
                     className={cn(

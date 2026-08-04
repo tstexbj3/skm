@@ -53,7 +53,6 @@ export default async function BillDetailPage({
     .from("payments")
     .select("id, amount, method, status, slip_image_url, created_at")
     .eq("bill_id", id)
-    .neq("status", "VOID")
     .order("created_at", { ascending: false });
   const paymentRows: PaymentRow[] = await Promise.all(
     (paymentsData ?? []).map(async (p) => ({

@@ -17,7 +17,6 @@ export default async function PaymentsPage() {
     .select(
       "id, amount, method, status, slip_image_url, created_at, bill:bills(id, room_number, payer_name)"
     )
-    .neq("status", "VOID")
     .order("created_at", { ascending: false })
     .limit(200);
 
