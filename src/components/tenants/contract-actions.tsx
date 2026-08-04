@@ -4,7 +4,9 @@ import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { RefreshCw, UserMinus } from "lucide-react";
 import { renewContract, endTenancy } from "@/app/(app)/tenants/actions";
+import { TENANT_MEDIA_BUCKET } from "@/lib/buckets";
 import { Button } from "@/components/ui/button";
+import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,9 +18,6 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-
-const fileClass =
-  "block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1 file:text-sm file:font-medium hover:file:bg-accent";
 
 export function ContractActions({
   contractId,
@@ -46,6 +45,8 @@ function RenewDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState(0);
+  const onBusy = (b: boolean) => setBusy((nb) => nb + (b ? 1 : -1));
 
   function onSubmit(formData: FormData) {
     startTransition(async () => {
@@ -86,14 +87,8 @@ function RenewDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="renew_scan">{t("newContractScan")}</Label>
-            <input
-              id="renew_scan"
-              name="contract_scan"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label>{t("newContractScan")}</Label>
+            <FileUpload name="contract_scan" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
@@ -102,7 +97,7 @@ function RenewDialog({
                 {t("cancel")}
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || busy > 0}>
               {t("renew")}
             </Button>
           </DialogFooter>

@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { PAYMENT_SLIPS_BUCKET } from "@/lib/buckets";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/payments";
 import { n } from "@/lib/billing";
 
@@ -34,21 +33,8 @@ export async function recordPayment(
   const amount = num(formData.get("amount"));
   if (amount <= 0) return { error: "amount" };
 
-  let slip_image_url: string | null = null;
-  const file = formData.get("slip");
-  if (file && typeof file !== "string" && file.size > 0) {
-    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-    const path = `${bill_id}/${globalThis.crypto.randomUUID()}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { error: upErr } = await supabase.storage
-      .from(PAYMENT_SLIPS_BUCKET)
-      .upload(path, buffer, {
-        contentType: file.type || "image/jpeg",
-        upsert: true,
-      });
-    if (upErr) return { error: upErr.message };
-    slip_image_url = path;
-  }
+  // Slip was uploaded client-side to Storage; we receive its path.
+  const slip_image_url = String(formData.get("slip") ?? "") || null;
 
   const { error } = await supabase.from("payments").insert({
     bill_id,

@@ -4,7 +4,9 @@ import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { UserPlus } from "lucide-react";
 import { addCoTenant } from "@/app/(app)/tenants/actions";
+import { TENANT_MEDIA_BUCKET } from "@/lib/buckets";
 import { Button } from "@/components/ui/button";
+import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,14 +18,13 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 
-const fileClass =
-  "block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1 file:text-sm file:font-medium hover:file:bg-accent";
-
 export function AddCoTenantDialog({ tenantId }: { tenantId: string }) {
   const t = useTranslations("tenants");
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState(0);
+  const onBusy = (b: boolean) => setBusy((nb) => nb + (b ? 1 : -1));
 
   function onSubmit(formData: FormData) {
     startTransition(async () => {
@@ -55,14 +56,8 @@ export function AddCoTenantDialog({ tenantId }: { tenantId: string }) {
             <Input id="co_add_name" name="co_tenant_name" required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="co_add_id">{t("coTenantId")}</Label>
-            <input
-              id="co_add_id"
-              name="co_tenant_national_id"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label>{t("coTenantId")}</Label>
+            <FileUpload name="co_tenant_national_id" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
@@ -71,7 +66,7 @@ export function AddCoTenantDialog({ tenantId }: { tenantId: string }) {
                 {t("cancel")}
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || busy > 0}>
               {t("save")}
             </Button>
           </DialogFooter>

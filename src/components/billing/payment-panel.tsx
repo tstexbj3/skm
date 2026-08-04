@@ -16,8 +16,10 @@ import {
   PAYMENT_STATUS_BADGE,
 } from "@/lib/payments";
 import { formatMoney2 } from "@/lib/billing";
+import { PAYMENT_SLIPS_BUCKET } from "@/lib/buckets";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -38,8 +40,6 @@ export type PaymentRow = {
 
 const selectClass =
   "flex h-8 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-const fileClass =
-  "block text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1 file:text-sm file:font-medium hover:file:bg-accent";
 
 export function PaymentPanel({
   billId,
@@ -55,6 +55,8 @@ export function PaymentPanel({
   const t = useTranslations("payments");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(0);
+  const onBusy = (b: boolean) => setBusy((nb) => nb + (b ? 1 : -1));
 
   const paid = paidAmount(payments);
   const pend = pendingAmount(payments);
@@ -188,18 +190,10 @@ export function PaymentPanel({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="slip" className="text-xs">
-              {t("slip")}
-            </Label>
-            <input
-              id="slip"
-              name="slip"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label className="text-xs">{t("slip")}</Label>
+            <FileUpload name="slip" bucket={PAYMENT_SLIPS_BUCKET} onBusyChange={onBusy} />
           </div>
-          <Button size="sm" type="submit" disabled={pending}>
+          <Button size="sm" type="submit" disabled={pending || busy > 0}>
             <Plus className="size-4" />
             {t("record")}
           </Button>

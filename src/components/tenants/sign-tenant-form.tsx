@@ -3,7 +3,9 @@
 import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { signTenant, type SignState } from "@/app/(app)/tenants/actions";
+import { TENANT_MEDIA_BUCKET } from "@/lib/buckets";
 import { Button } from "@/components/ui/button";
+import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,8 +24,6 @@ type VacantRoom = {
 
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-const fileClass =
-  "block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1 file:text-sm file:font-medium hover:file:bg-accent";
 
 export function SignTenantForm({ rooms }: { rooms: VacantRoom[] }) {
   const t = useTranslations("tenants");
@@ -33,6 +33,8 @@ export function SignTenantForm({ rooms }: { rooms: VacantRoom[] }) {
   );
 
   const today = new Date().toISOString().slice(0, 10);
+  const [busy, setBusy] = useState(0);
+  const onBusy = (b: boolean) => setBusy((nb) => nb + (b ? 1 : -1));
   const [advAmount, setAdvAmount] = useState("");
   const [advPaid, setAdvPaid] = useState("");
   const [depAmount, setDepAmount] = useState("");
@@ -132,48 +134,24 @@ export function SignTenantForm({ rooms }: { rooms: VacantRoom[] }) {
             <Input id="phone" name="phone" type="tel" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="photo">{t("photo")}</Label>
-            <input
-              id="photo"
-              name="photo"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label>{t("photo")}</Label>
+            <FileUpload name="photo" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="national_id">{t("nationalId")}</Label>
-            <input
-              id="national_id"
-              name="national_id"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label>{t("nationalId")}</Label>
+            <FileUpload name="national_id" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="co_tenant_name">{t("coTenantName")}</Label>
             <Input id="co_tenant_name" name="co_tenant_name" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="co_tenant_national_id">{t("coTenantId")}</Label>
-            <input
-              id="co_tenant_national_id"
-              name="co_tenant_national_id"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label>{t("coTenantId")}</Label>
+            <FileUpload name="co_tenant_national_id" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="contract_scan">{t("contractScan")}</Label>
-            <input
-              id="contract_scan"
-              name="contract_scan"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label>{t("contractScan")}</Label>
+            <FileUpload name="contract_scan" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
         </CardContent>
       </Card>
@@ -238,7 +216,7 @@ export function SignTenantForm({ rooms }: { rooms: VacantRoom[] }) {
       {errorMsg && <p className="text-sm text-destructive">{errorMsg}</p>}
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || busy > 0}>
           {pending ? t("signing") : t("sign")}
         </Button>
       </div>

@@ -9,7 +9,9 @@ import {
   deletePaymentAccount,
   togglePaymentAccount,
 } from "@/app/(app)/settings/actions";
+import { QR_BUCKET } from "@/lib/buckets";
 import { Button } from "@/components/ui/button";
+import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -37,15 +39,14 @@ export type AccountRow = {
   qrUrl: string | null;
 };
 
-const fileClass =
-  "block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1 file:text-sm file:font-medium hover:file:bg-accent";
-
 export function PaymentAccounts({ accounts }: { accounts: AccountRow[] }) {
   const t = useTranslations("settings");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<AccountRow | null>(null);
   const [deleting, setDeleting] = useState<AccountRow | null>(null);
+  const [busy, setBusy] = useState(0);
+  const onBusy = (b: boolean) => setBusy((nb) => nb + (b ? 1 : -1));
 
   function add(formData: FormData) {
     setError(null);
@@ -159,19 +160,16 @@ export function PaymentAccounts({ accounts }: { accounts: AccountRow[] }) {
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="qr" className="text-xs">
-              {t("qr")}
-            </Label>
-            <input
-              id="qr"
-              name="qr"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label className="text-xs">{t("qr")}</Label>
+            <FileUpload name="qr" bucket={QR_BUCKET} onBusyChange={onBusy} />
           </div>
           <div className="sm:col-span-2">
-            <Button size="sm" variant="outline" type="submit" disabled={pending}>
+            <Button
+              size="sm"
+              variant="outline"
+              type="submit"
+              disabled={pending || busy > 0}
+            >
               <Plus className="size-4" />
               {t("addAccount")}
             </Button>
@@ -202,6 +200,8 @@ function EditDialog({
   const t = useTranslations("settings");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(0);
+  const onBusy = (b: boolean) => setBusy((nb) => nb + (b ? 1 : -1));
 
   function save(formData: FormData) {
     setError(null);
@@ -233,8 +233,8 @@ function EditDialog({
             <Input id="e_num" name="account_number" defaultValue={account.account_number} required />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="e_qr">{t("qr")}</Label>
-            <input id="e_qr" name="qr" type="file" accept="image/*" className={fileClass} />
+            <Label>{t("qr")}</Label>
+            <FileUpload name="qr" bucket={QR_BUCKET} onBusyChange={onBusy} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
@@ -243,7 +243,7 @@ function EditDialog({
                 {t("cancel") ?? "Cancel"}
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || busy > 0}>
               {t("save")}
             </Button>
           </DialogFooter>

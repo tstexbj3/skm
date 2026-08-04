@@ -5,7 +5,9 @@ import { useTranslations } from "next-intl";
 import { Plus } from "lucide-react";
 import { recordExpense } from "@/app/(app)/expenses/actions";
 import { FORM_CATEGORIES } from "@/lib/expenses";
+import { EXPENSE_MEDIA_BUCKET } from "@/lib/buckets";
 import { Button } from "@/components/ui/button";
+import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,8 +19,6 @@ import {
 
 const selectClass =
   "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-const fileClass =
-  "block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1 file:text-sm file:font-medium hover:file:bg-accent";
 
 export function RecordExpense({
   rooms,
@@ -29,6 +29,8 @@ export function RecordExpense({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(0);
+  const onBusy = (b: boolean) => setBusy((nb) => nb + (b ? 1 : -1));
   const today = new Date().toISOString().slice(0, 10);
 
   function submit(formData: FormData) {
@@ -82,15 +84,15 @@ export function RecordExpense({
             <Input id="description" name="description" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bill_image">{t("billPhoto")}</Label>
-            <input id="bill_image" name="bill_image" type="file" accept="image/*" className={fileClass} />
+            <Label>{t("billPhoto")}</Label>
+            <FileUpload name="bill_image" bucket={EXPENSE_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="item_image">{t("itemPhoto")}</Label>
-            <input id="item_image" name="item_image" type="file" accept="image/*" className={fileClass} />
+            <Label>{t("itemPhoto")}</Label>
+            <FileUpload name="item_image" bucket={EXPENSE_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           <div className="flex items-center gap-3 sm:col-span-2">
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || busy > 0}>
               <Plus className="size-4" />
               {t("record")}
             </Button>

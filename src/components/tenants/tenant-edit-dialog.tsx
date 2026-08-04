@@ -4,7 +4,9 @@ import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { Pencil } from "lucide-react";
 import { updateTenant } from "@/app/(app)/tenants/actions";
+import { TENANT_MEDIA_BUCKET } from "@/lib/buckets";
 import { Button } from "@/components/ui/button";
+import { FileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,9 +17,6 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-
-const fileClass =
-  "block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1 file:text-sm file:font-medium hover:file:bg-accent";
 
 export function TenantEditDialog({
   tenant,
@@ -33,6 +32,8 @@ export function TenantEditDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState(0);
+  const onBusy = (b: boolean) => setBusy((nb) => nb + (b ? 1 : -1));
 
   function onSubmit(formData: FormData) {
     startTransition(async () => {
@@ -91,37 +92,17 @@ export function TenantEditDialog({
 
           <p className="text-xs text-muted-foreground">{t("replaceHint")}</p>
           <div className="space-y-2">
-            <Label htmlFor="edit_photo">{t("photo")}</Label>
-            <input
-              id="edit_photo"
-              name="photo"
-              type="file"
-              accept="image/*"
-              className={fileClass}
-            />
+            <Label>{t("photo")}</Label>
+            <FileUpload name="photo" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="edit_national_id">{t("nationalId")}</Label>
-              <input
-                id="edit_national_id"
-                name="national_id"
-                type="file"
-                accept="image/*"
-                className={fileClass}
-              />
+              <Label>{t("nationalId")}</Label>
+              <FileUpload name="national_id" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit_co_tenant_national_id">
-                {t("coTenantId")}
-              </Label>
-              <input
-                id="edit_co_tenant_national_id"
-                name="co_tenant_national_id"
-                type="file"
-                accept="image/*"
-                className={fileClass}
-              />
+              <Label>{t("coTenantId")}</Label>
+              <FileUpload name="co_tenant_national_id" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
             </div>
           </div>
 
@@ -133,7 +114,7 @@ export function TenantEditDialog({
                 {t("cancel")}
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" disabled={pending || busy > 0}>
               {t("save")}
             </Button>
           </DialogFooter>

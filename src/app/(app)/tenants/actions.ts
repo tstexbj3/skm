@@ -5,34 +5,12 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TENANT_BUCKET } from "@/lib/tenants";
 import { addMonths } from "@/lib/contracts";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SignState = { error?: string };
 
 function money(value: FormDataEntryValue | null): number {
   const n = Number(String(value ?? "").replace(/,/g, ""));
   return Number.isFinite(n) && n >= 0 ? n : 0;
-}
-
-async function uploadIfPresent(
-  supabase: SupabaseClient,
-  folder: string,
-  field: string,
-  file: FormDataEntryValue | null
-): Promise<string | null> {
-  if (!file || typeof file === "string") return null;
-  if (file.size === 0) return null;
-  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
-  const path = `${folder}/${field}.${ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const { error } = await supabase.storage
-    .from(TENANT_BUCKET)
-    .upload(path, buffer, {
-      contentType: file.type || "application/octet-stream",
-      upsert: true,
-    });
-  if (error) throw new Error(`upload_${field}: ${error.message}`);
-  return path;
 }
 
 /**
@@ -55,35 +33,14 @@ export async function signTenant(
   if (!room_id) return { error: "room_required" };
   if (!full_name) return { error: "name_required" };
 
-  const folder = globalThis.crypto.randomUUID();
-
-  let photo_url: string | null;
-  let national_id_image_url: string | null;
-  let co_tenant_national_id_image_url: string | null;
-  let contract_scan_url: string | null;
-  try {
-    photo_url = await uploadIfPresent(supabase, folder, "photo", formData.get("photo"));
-    national_id_image_url = await uploadIfPresent(
-      supabase,
-      folder,
-      "national_id",
-      formData.get("national_id")
-    );
-    co_tenant_national_id_image_url = await uploadIfPresent(
-      supabase,
-      folder,
-      "co_tenant_national_id",
-      formData.get("co_tenant_national_id")
-    );
-    contract_scan_url = await uploadIfPresent(
-      supabase,
-      folder,
-      "contract_scan",
-      formData.get("contract_scan")
-    );
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "upload_failed" };
-  }
+  // Files were uploaded client-side to Storage; we receive their paths.
+  const photo_url = String(formData.get("photo") ?? "") || null;
+  const national_id_image_url =
+    String(formData.get("national_id") ?? "") || null;
+  const co_tenant_national_id_image_url =
+    String(formData.get("co_tenant_national_id") ?? "") || null;
+  const contract_scan_url =
+    String(formData.get("contract_scan") ?? "") || null;
 
   const { data: tenant, error: tErr } = await supabase
     .from("tenants")
@@ -171,17 +128,8 @@ export async function addCoTenant(
       co_tenant_national_id_image_url: string | null;
     }>();
 
-  let imagePath: string | null = null;
-  try {
-    imagePath = await uploadIfPresent(
-      supabase,
-      id,
-      "co_tenant_national_id",
-      formData.get("co_tenant_national_id")
-    );
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "upload_failed" };
-  }
+  const imagePath =
+    String(formData.get("co_tenant_national_id") ?? "") || null;
 
   const { error } = await supabase.rpc("add_co_tenant", {
     p_tenant_id: id,
@@ -257,26 +205,10 @@ export async function updateTenant(
   const full_name = String(formData.get("full_name") ?? "").trim();
   if (!full_name) return { error: "name_required" };
 
-  let newPhoto: string | null;
-  let newNatId: string | null;
-  let newCoId: string | null;
-  try {
-    newPhoto = await uploadIfPresent(supabase, id, "photo", formData.get("photo"));
-    newNatId = await uploadIfPresent(
-      supabase,
-      id,
-      "national_id",
-      formData.get("national_id")
-    );
-    newCoId = await uploadIfPresent(
-      supabase,
-      id,
-      "co_tenant_national_id",
-      formData.get("co_tenant_national_id")
-    );
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "upload_failed" };
-  }
+  // New files (if any) were uploaded client-side; empty means keep current.
+  const newPhoto = String(formData.get("photo") ?? "") || null;
+  const newNatId = String(formData.get("national_id") ?? "") || null;
+  const newCoId = String(formData.get("co_tenant_national_id") ?? "") || null;
 
   const next: TenantEditable = {
     full_name,
@@ -457,7 +389,6 @@ export async function renewContract(
   if (!user) return { error: "auth" };
 
   const contractId = String(formData.get("contract_id") ?? "");
-  const tenantId = String(formData.get("tenant_id") ?? "");
   if (!contractId) return { error: "missing_id" };
 
   const { data: current } = await supabase
@@ -477,17 +408,7 @@ export async function renewContract(
     current.end_date && current.end_date > today ? current.end_date : today;
   const new_end = addMonths(new_start, term_months);
 
-  let newScan: string | null = null;
-  try {
-    newScan = await uploadIfPresent(
-      supabase,
-      tenantId || current.tenant_id,
-      "contract_scan",
-      formData.get("contract_scan")
-    );
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "upload_failed" };
-  }
+  const newScan = String(formData.get("contract_scan") ?? "") || null;
 
   // 1) Archive the old contract (kept, not deleted; not ENDED so room stays).
   const { error: archiveErr } = await supabase

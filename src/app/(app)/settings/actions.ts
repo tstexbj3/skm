@@ -57,21 +57,8 @@ export async function addPaymentAccount(
   if (!bank_name || !account_name || !account_number)
     return { error: "required" };
 
-  let qr_image_url: string | null = null;
-  const file = formData.get("qr");
-  if (file && typeof file !== "string" && file.size > 0) {
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    const path = `${globalThis.crypto.randomUUID()}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { error: upErr } = await supabase.storage
-      .from(QR_BUCKET)
-      .upload(path, buffer, {
-        contentType: file.type || "image/png",
-        upsert: true,
-      });
-    if (upErr) return { error: upErr.message };
-    qr_image_url = path;
-  }
+  // QR was uploaded client-side to Storage; we receive its path.
+  const qr_image_url = String(formData.get("qr") ?? "") || null;
 
   const { error } = await supabase.from("payment_accounts").insert({
     bank_name,
@@ -111,17 +98,9 @@ export async function updatePaymentAccount(
     account_number,
     updated_at: new Date().toISOString(),
   };
-  const file = formData.get("qr");
-  if (file && typeof file !== "string" && file.size > 0) {
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    const path = `${globalThis.crypto.randomUUID()}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { error: upErr } = await supabase.storage
-      .from(QR_BUCKET)
-      .upload(path, buffer, { contentType: file.type || "image/png", upsert: true });
-    if (upErr) return { error: upErr.message };
-    patch.qr_image_url = path;
-  }
+  // New QR (if any) was uploaded client-side; empty means keep current.
+  const qrPath = String(formData.get("qr") ?? "");
+  if (qrPath) patch.qr_image_url = qrPath;
 
   const { data, error } = await supabase
     .from("payment_accounts")

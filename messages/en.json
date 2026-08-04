@@ -36,7 +36,9 @@
     "english": "English",
     "comingSoon": "Coming soon",
     "comingSoonBody": "This module will be built in a later slice.",
-    "ownerOnly": "Owner only"
+    "ownerOnly": "Owner only",
+    "uploading": "Uploading…",
+    "uploaded": "Uploaded"
   },
   "dashboard": {
     "title": "Welcome",
