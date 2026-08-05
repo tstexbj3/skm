@@ -27,9 +27,10 @@ const MSG = {
   needRoom: 'กรุณาพิมพ์เลขห้องของคุณ แล้วส่งสลิปอีกครั้ง เช่น "305"',
   // room has no bill waiting to be paid
   noBill: (room: string) => `ไม่พบบิลที่ต้องชำระสำหรับห้อง ${room}`,
-  // success — slip recorded, awaiting owner approval
-  received: (room: string, amount: string) =>
-    `รับสลิปห้อง ${room} จำนวน ฿${amount} แล้ว รอเจ้าของยืนยัน`,
+  // success — slip recorded, awaiting owner approval. Shows the payer name so a
+  // tenant can tell immediately if their slip matched the wrong room.
+  received: (room: string, name: string, amount: string) =>
+    `รับสลิปห้อง ${room} (${name}) จำนวน ฿${amount} แล้ว รอการยืนยัน`,
   // unexpected error
   error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
 };
@@ -68,10 +69,14 @@ export async function GET() {
   });
 }
 
-/** Pull a room number (1–4 digits) out of the tenant's text message. */
+/**
+ * Read a room number from a tenant's text — but ONLY when the whole message is
+ * essentially just that number (optionally prefixed by ห้อง/room/#). This stops
+ * a stray number in normal chat ("จ่าย 500 บาท") from being taken as a room.
+ */
 function parseRoom(text: string | undefined): string | null {
   if (!text) return null;
-  const m = text.match(/(?:ห้อง|เลขห้อง|room|#)?\s*([0-9]{1,4})/i);
+  const m = text.trim().match(/^(?:ห้อง|เลขห้อง|room|#)?\s*([0-9]{1,4})$/i);
   return m ? m[1] : null;
 }
 
@@ -162,7 +167,7 @@ export async function POST(req: Request) {
       // Latest payable bill for that room (issued, not draft/void).
       const { data: bill } = await supabase
         .from("bills")
-        .select("id, room_number, status")
+        .select("id, room_number, payer_name, status")
         .eq("room_number", room)
         .in("status", ["SENT", "APPROVED", "PRINTED"])
         .order("billing_month", { ascending: false })
@@ -200,7 +205,11 @@ export async function POST(req: Request) {
 
       await replyLine(
         replyToken,
-        MSG.received(room, slip.amount.toLocaleString()),
+        MSG.received(
+          room,
+          (bill.payer_name as string) ?? "",
+          slip.amount.toLocaleString()
+        ),
         accessToken
       );
     } catch {

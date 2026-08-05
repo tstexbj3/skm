@@ -220,6 +220,8 @@
     "minCharge": "Min",
     "generateAll": "Generate all",
     "printAll": "Print all",
+    "paidFull": "Paid",
+    "owe": "Owe",
     "noBills": "No bills for this month",
     "paymentAccount": "Payment account",
     "payTo": "Transfer to account",

@@ -24,6 +24,22 @@ export default async function BillingPage({
     .select("id, contract_id, status, total_amount")
     .eq("billing_month", billing_month);
 
+  // Approved/reconciled payments per bill → paid amount for the list view.
+  const billIds = (billsData ?? []).map((b) => b.id as string);
+  const { data: paysData } = billIds.length
+    ? await supabase
+        .from("payments")
+        .select("bill_id, amount, status")
+        .in("bill_id", billIds)
+    : { data: [] as { bill_id: string; amount: string; status: string }[] };
+  const paidByBill = new Map<string, number>();
+  for (const p of paysData ?? []) {
+    if (p.status === "APPROVED" || p.status === "RECONCILED") {
+      const k = p.bill_id as string;
+      paidByBill.set(k, (paidByBill.get(k) ?? 0) + Number(p.amount));
+    }
+  }
+
   const billMap = new Map(
     (billsData ?? []).map((b) => [b.contract_id as string, b])
   );
@@ -41,7 +57,12 @@ export default async function BillingPage({
         room: c.room?.room_number ?? "—",
         tenant: c.tenant?.full_name ?? "—",
         bill: b
-          ? { id: b.id as string, status: b.status as string, total: String(b.total_amount) }
+          ? {
+              id: b.id as string,
+              status: b.status as string,
+              total: String(b.total_amount),
+              paid: paidByBill.get(b.id as string) ?? 0,
+            }
           : null,
       };
     })

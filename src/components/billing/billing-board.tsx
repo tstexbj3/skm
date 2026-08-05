@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { FileText } from "lucide-react";
 import { generateBill, generateAllBills } from "@/app/(app)/billing/actions";
-import { BILL_STATUS_BADGE, type BillStatus } from "@/lib/billing";
+import { BILL_STATUS_BADGE, round2, type BillStatus } from "@/lib/billing";
 import { formatMoney } from "@/lib/rooms";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ export type BillRow = {
   contractId: string;
   room: string;
   tenant: string;
-  bill: { id: string; status: string; total: string } | null;
+  bill: { id: string; status: string; total: string; paid: number } | null;
 };
 
 export function BillingBoard({
@@ -141,8 +141,31 @@ export function BillingBoard({
                     <span className="text-muted-foreground">—</span>
                   )}
                 </td>
-                <td className="px-4 py-2 text-muted-foreground">
-                  {row.bill ? `฿${formatMoney(row.bill.total)}` : "—"}
+                <td className="px-4 py-2">
+                  {row.bill ? (
+                    <div>
+                      <span className="text-muted-foreground">
+                        ฿{formatMoney(row.bill.total)}
+                      </span>
+                      {(() => {
+                        const total = Number(row.bill.total);
+                        const paid = row.bill.paid;
+                        if (paid <= 0) return null;
+                        const outstanding = round2(total - paid);
+                        return outstanding <= 0.001 ? (
+                          <div className="text-xs font-medium text-emerald-600">
+                            {t("paidFull")}
+                          </div>
+                        ) : (
+                          <div className="text-xs font-medium text-amber-600">
+                            {t("owe")} ฿{formatMoney(String(outstanding))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-2 text-right">
                   {row.bill ? (
