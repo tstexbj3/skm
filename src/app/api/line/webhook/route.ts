@@ -14,6 +14,22 @@ import { PAYMENT_SLIPS_BUCKET } from "@/lib/buckets";
 // crypto + Buffer + service role → Node runtime, never Edge.
 export const runtime = "nodejs";
 
+/**
+ * Diagnostic: reports WHICH env vars are present (booleans only — never the
+ * values). Lets us confirm the deployment sees all four without leaking any
+ * secret. Safe to leave in; it exposes no data.
+ */
+export async function GET() {
+  return NextResponse.json({
+    configured: {
+      LINE_CHANNEL_SECRET: Boolean(process.env.LINE_CHANNEL_SECRET),
+      LINE_CHANNEL_ACCESS_TOKEN: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
+      EASYSLIP_TOKEN: Boolean(process.env.EASYSLIP_TOKEN),
+      SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    },
+  });
+}
+
 /** Pull a room number (1–4 digits) out of the tenant's text message. */
 function parseRoom(text: string | undefined): string | null {
   if (!text) return null;
