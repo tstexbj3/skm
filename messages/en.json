@@ -238,6 +238,16 @@
     "print": "Print",
     "reprint": "Reprint",
     "printedTimes": "Printed {n} time(s)",
+    "meters": {
+      "title": "Meter readings",
+      "enter": "Enter meters",
+      "saveAll": "Save all",
+      "hint": "Type this month's meter reading for each room, then Save all (this month's DRAFT bills only).",
+      "savedCount": "Saved {n} room(s)",
+      "nothingChanged": "Nothing changed yet",
+      "noDrafts": "No draft bills for this month — generate bills first.",
+      "notMetered": "Not metered"
+    },
     "statuses": {
       "DRAFT": "Draft",
       "SENT": "Sent",

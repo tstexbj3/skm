@@ -79,6 +79,11 @@ export function BillingBoard({
           {t("generateAll")}
         </Button>
         <Button asChild size="sm" variant="outline">
+          <Link href={`/billing/meters?month=${month}`}>
+            {t("meters.enter")}
+          </Link>
+        </Button>
+        <Button asChild size="sm" variant="outline">
           <Link href={`/print/month/${month}`} target="_blank">
             {t("printAll")}
           </Link>

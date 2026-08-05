@@ -368,6 +368,118 @@ export async function updateBill(
   return { ok: true };
 }
 
+export type MeterReading = {
+  billId: string;
+  elecEnd: number | null; // null = leave electricity unchanged
+  waterEnd: number | null; // null = leave water unchanged
+};
+
+/**
+ * Batch-enter this month's meter readings for many DRAFT bills at once.
+ * Recomputes water (PER_UNIT rooms only) + electricity (skipped for
+ * broken-meter/manual bills, whose amount is preserved) + total, exactly like
+ * updateBill but for the meter fields only — late fee, other charges, persons,
+ * note and line items are left untouched. Non-DRAFT bills are ignored (admin
+ * can only edit a bill while DRAFT).
+ */
+export async function saveMeterReadings(
+  month: string,
+  readings: MeterReading[]
+): Promise<BillActionState & { saved?: number }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "auth" };
+
+  const targets = readings.filter(
+    (r) => r.billId && (r.elecEnd != null || r.waterEnd != null)
+  );
+  if (!targets.length) return { ok: true, saved: 0 };
+  const ids = targets.map((r) => r.billId);
+
+  const { data: bills } = await supabase
+    .from("bills")
+    .select(
+      "id, status, water_billing_mode, water_rate, water_vat_rate, water_start, water_persons, water_amount, elec_unit_rate, elec_vat_rate, elec_start, elec_min_charge, meter_digits, elec_is_manual, elec_amount, rent_amount, late_fee_amount, other_charge_amount"
+    )
+    .in("id", ids);
+  const billMap = new Map((bills ?? []).map((b) => [b.id as string, b]));
+
+  const { data: items } = await supabase
+    .from("bill_line_items")
+    .select("bill_id, amount, include_in_total, status")
+    .in("bill_id", ids);
+  const lineTotals = new Map<string, number>();
+  for (const it of items ?? []) {
+    if (it.include_in_total && it.status === "ACTIVE") {
+      const k = it.bill_id as string;
+      lineTotals.set(k, (lineTotals.get(k) ?? 0) + n(it.amount));
+    }
+  }
+
+  let saved = 0;
+  for (const r of targets) {
+    const b = billMap.get(r.billId);
+    if (!b || b.status !== "DRAFT") continue;
+    const digits = n(b.meter_digits);
+    const mode = b.water_billing_mode as WaterMode;
+    const patch: Record<string, unknown> = {};
+
+    let water_amount = n(b.water_amount);
+    if (mode === "PER_UNIT" && r.waterEnd != null) {
+      water_amount = computeWater({
+        mode,
+        rate: n(b.water_rate),
+        persons: n(b.water_persons),
+        start: n(b.water_start),
+        end: r.waterEnd,
+        vat: n(b.water_vat_rate),
+        digits,
+      });
+      patch.water_end = r.waterEnd;
+      patch.water_amount = water_amount;
+    }
+
+    let elec_amount = n(b.elec_amount);
+    if (!b.elec_is_manual && r.elecEnd != null) {
+      elec_amount = computeElectricity({
+        start: n(b.elec_start),
+        end: r.elecEnd,
+        rate: n(b.elec_unit_rate),
+        vat: n(b.elec_vat_rate),
+        digits,
+        minCharge: n(b.elec_min_charge),
+      });
+      patch.elec_end = r.elecEnd;
+      patch.elec_amount = elec_amount;
+    }
+
+    if (Object.keys(patch).length === 0) continue; // nothing applicable
+
+    patch.total_amount = computeTotal({
+      rent: n(b.rent_amount),
+      water: water_amount,
+      electricity: elec_amount,
+      lateFee: n(b.late_fee_amount),
+      other: n(b.other_charge_amount),
+      lineItems: lineTotals.get(r.billId) ?? 0,
+    });
+
+    const { data, error } = await supabase
+      .from("bills")
+      .update(patch)
+      .eq("id", r.billId)
+      .eq("status", "DRAFT")
+      .select("id");
+    if (!error && data && data.length) saved++;
+  }
+
+  revalidatePath("/billing");
+  revalidatePath("/billing/meters");
+  return { ok: true, saved };
+}
+
 async function setStatus(
   formData: FormData,
   from: string,
