@@ -14,6 +14,26 @@ import { PAYMENT_SLIPS_BUCKET } from "@/lib/buckets";
 // crypto + Buffer + service role → Node runtime, never Edge.
 export const runtime = "nodejs";
 
+// ───────────────────────────────────────────────────────────────────────────
+// AUTO-REPLY MESSAGES — edit the Thai text here, then commit + push to deploy.
+// The {room} / {amount} placeholders are filled in automatically; keep them.
+// ───────────────────────────────────────────────────────────────────────────
+const MSG = {
+  // slip image couldn't be read by EasySlip
+  unreadable: "อ่านสลิปไม่สำเร็จ กรุณาส่งภาพสลิปที่ชัดเจนอีกครั้ง",
+  // this slip (same transaction ref) was already recorded
+  duplicate: "สลิปนี้ถูกบันทึกไว้แล้ว",
+  // no room number known for this user yet
+  needRoom: 'กรุณาพิมพ์เลขห้องของคุณ แล้วส่งสลิปอีกครั้ง เช่น "305"',
+  // room has no bill waiting to be paid
+  noBill: (room: string) => `ไม่พบบิลที่ต้องชำระสำหรับห้อง ${room}`,
+  // success — slip recorded, awaiting owner approval
+  received: (room: string, amount: string) =>
+    `รับสลิปห้อง ${room} จำนวน ฿${amount} แล้ว รอเจ้าของยืนยัน`,
+  // unexpected error
+  error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+};
+
 /**
  * Diagnostic: reports WHICH env vars are present (booleans only — never the
  * values). Lets us confirm the deployment sees all four without leaking any
@@ -119,11 +139,7 @@ export async function POST(req: Request) {
       console.log("[line] easyslip result:", JSON.stringify(verified));
       const slip = verified.data;
       if (!verified.ok || !slip?.ref || !slip.amount) {
-        await replyLine(
-          replyToken,
-          "อ่านสลิปไม่สำเร็จ กรุณาส่งภาพสลิปที่ชัดเจนอีกครั้ง",
-          accessToken
-        );
+        await replyLine(replyToken, MSG.unreadable, accessToken);
         continue;
       }
 
@@ -134,16 +150,12 @@ export async function POST(req: Request) {
         .eq("slip_ref", slip.ref)
         .maybeSingle();
       if (dup) {
-        await replyLine(replyToken, "สลิปนี้ถูกบันทึกไว้แล้ว", accessToken);
+        await replyLine(replyToken, MSG.duplicate, accessToken);
         continue;
       }
 
       if (!room) {
-        await replyLine(
-          replyToken,
-          'กรุณาพิมพ์เลขห้องของคุณ แล้วส่งสลิปอีกครั้ง เช่น "305"',
-          accessToken
-        );
+        await replyLine(replyToken, MSG.needRoom, accessToken);
         continue;
       }
 
@@ -157,11 +169,7 @@ export async function POST(req: Request) {
         .limit(1)
         .maybeSingle();
       if (!bill) {
-        await replyLine(
-          replyToken,
-          `ไม่พบบิลที่ต้องชำระสำหรับห้อง ${room}`,
-          accessToken
-        );
+        await replyLine(replyToken, MSG.noBill(room), accessToken);
         continue;
       }
 
@@ -186,21 +194,17 @@ export async function POST(req: Request) {
       });
       if (error) {
         // Unique-index race on slip_ref → treat as already recorded.
-        await replyLine(replyToken, "สลิปนี้ถูกบันทึกไว้แล้ว", accessToken);
+        await replyLine(replyToken, MSG.duplicate, accessToken);
         continue;
       }
 
       await replyLine(
         replyToken,
-        `รับสลิปห้อง ${room} จำนวน ฿${slip.amount.toLocaleString()} แล้ว รอเจ้าของยืนยัน`,
+        MSG.received(room, slip.amount.toLocaleString()),
         accessToken
       );
     } catch {
-      await replyLine(
-        replyToken,
-        "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
-        accessToken
-      ).catch(() => {});
+      await replyLine(replyToken, MSG.error, accessToken).catch(() => {});
     }
   }
 
