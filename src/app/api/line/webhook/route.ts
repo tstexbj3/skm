@@ -20,6 +20,22 @@ export const runtime = "nodejs";
  * secret. Safe to leave in; it exposes no data.
  */
 export async function GET() {
+  // Also probe the service-role DB path: a present-but-invalid key would break
+  // every DB op the webhook does (persist room, dedupe, find bill, insert).
+  let db_ok = false;
+  let db_error: string | null = null;
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from("line_user_rooms")
+      .select("user_id")
+      .limit(1);
+    if (error) db_error = error.message;
+    else db_ok = true;
+  } catch (e) {
+    db_error = e instanceof Error ? e.message : "exception";
+  }
+
   return NextResponse.json({
     configured: {
       LINE_CHANNEL_SECRET: Boolean(process.env.LINE_CHANNEL_SECRET),
@@ -27,6 +43,8 @@ export async function GET() {
       EASYSLIP_TOKEN: Boolean(process.env.EASYSLIP_TOKEN),
       SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
     },
+    db_ok,
+    db_error,
   });
 }
 
