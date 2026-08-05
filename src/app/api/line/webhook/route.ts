@@ -57,24 +57,41 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  // A tenant sends the room number as text alongside the slip image; remember
-  // the latest room per user within this delivery so an image can find it.
+  const supabase = createAdminClient();
+
+  // A tenant types their room number as a text message. LINE delivers text and
+  // the slip image as SEPARATE webhook calls, so remember the room per user in
+  // this delivery AND persist it, so a later image message can look it up.
   const roomByUser = new Map<string, string>();
   for (const ev of events) {
     if (ev.type === "message" && ev.message?.type === "text") {
       const room = parseRoom(ev.message.text);
-      if (room && ev.source?.userId) roomByUser.set(ev.source.userId, room);
+      if (room && ev.source?.userId) {
+        roomByUser.set(ev.source.userId, room);
+        await supabase.from("line_user_rooms").upsert({
+          user_id: ev.source.userId,
+          room,
+          updated_at: new Date().toISOString(),
+        });
+      }
     }
   }
-
-  const supabase = createAdminClient();
 
   for (const ev of events) {
     if (ev.type !== "message" || ev.message?.type !== "image") continue;
     const replyToken = ev.replyToken;
     if (!replyToken || !ev.message.id) continue;
     const userId = ev.source?.userId;
-    const room = userId ? roomByUser.get(userId) ?? null : null;
+    // room from this delivery, else the last one this user persisted
+    let room = userId ? roomByUser.get(userId) ?? null : null;
+    if (!room && userId) {
+      const { data: st } = await supabase
+        .from("line_user_rooms")
+        .select("room")
+        .eq("user_id", userId)
+        .maybeSingle();
+      room = (st?.room as string | undefined) ?? null;
+    }
 
     try {
       const image = await getLineImage(ev.message.id, accessToken);

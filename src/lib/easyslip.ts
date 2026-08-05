@@ -1,13 +1,13 @@
 /**
- * EasySlip slip-verification adapter.
- * Docs: https://document.easyslip.com/documents/verify/bank/image
- *   POST https://developer.easyslip.com/api/v1/verify
+ * EasySlip slip-verification adapter — API v2.
+ * Docs: https://document.easyslip.com/en/v2/verify/bank/image
+ *   POST https://api.easyslip.com/v2/verify/bank
  *   Authorization: Bearer <EASYSLIP_TOKEN>
- *   multipart/form-data  field "file" = slip image
+ *   multipart/form-data  field "image" = slip image
  *
- * Response field paths are read defensively (with fallbacks) so a minor shape
- * change from EasySlip degrades gracefully instead of throwing. The raw payload
- * is returned so we can confirm the exact shape against the first real slip.
+ * v2 wraps the slip under data.rawSlip (v1 had it directly under data), so we
+ * read from data.rawSlip and fall back to data for resilience. The raw payload
+ * is returned so we can confirm the exact shape from the Vercel log.
  */
 
 export type SlipData = {
@@ -20,7 +20,7 @@ export type SlipData = {
 };
 
 type EasySlipName = { th?: string; en?: string };
-type EasySlipData = {
+type EasySlipSlip = {
   transRef?: string;
   ref1?: string;
   amount?: number | { amount?: number };
@@ -29,7 +29,12 @@ type EasySlipData = {
     account?: { name?: EasySlipName };
   };
   receiver?: {
-    account?: { bank?: { account?: string }; proxy?: { account?: string } };
+    bank?: { name?: string; short?: string };
+    account?: {
+      name?: EasySlipName;
+      bank?: { account?: string };
+      proxy?: { account?: string };
+    };
   };
 };
 
@@ -47,12 +52,12 @@ export async function verifySlipImage(
   token: string
 ): Promise<{ ok: boolean; data?: SlipData; error?: string }> {
   const form = new FormData();
-  form.append("file", new Blob([new Uint8Array(image)]), "slip.jpg");
+  form.append("image", new Blob([new Uint8Array(image)]), "slip.jpg");
   form.append("checkDuplicate", "false");
 
   let res: Response;
   try {
-    res = await fetch("https://developer.easyslip.com/api/v1/verify", {
+    res = await fetch("https://api.easyslip.com/v2/verify/bank", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: form,
@@ -62,7 +67,8 @@ export async function verifySlipImage(
   }
 
   const json = (await res.json().catch(() => null)) as {
-    data?: EasySlipData;
+    success?: boolean;
+    data?: { rawSlip?: EasySlipSlip } & EasySlipSlip;
     message?: string;
   } | null;
 
@@ -70,7 +76,8 @@ export async function verifySlipImage(
     return { ok: false, error: json?.message ?? `http_${res.status}` };
   }
 
-  const d = json.data;
+  // v2 nests under data.rawSlip; fall back to data for older/other shapes.
+  const d: EasySlipSlip = json.data.rawSlip ?? json.data;
   const amount =
     typeof d.amount === "object" ? toNumber(d.amount?.amount) : toNumber(d.amount);
 
