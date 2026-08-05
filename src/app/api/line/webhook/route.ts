@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   verifyLineSignature,
   getLineImage,
+  getLineProfile,
   replyLine,
   type LineEvent,
 } from "@/lib/line";
@@ -23,8 +24,8 @@ const MSG = {
   unreadable: "อ่านสลิปไม่สำเร็จ กรุณาส่งภาพสลิปที่ชัดเจนอีกครั้ง",
   // this slip (same transaction ref) was already recorded
   duplicate: "สลิปนี้ถูกบันทึกไว้แล้ว",
-  // no room number known for this user yet
-  needRoom: 'กรุณาพิมพ์เลขห้องของคุณ แล้วส่งสลิปอีกครั้ง เช่น "305"',
+  // this LINE account isn't linked to a room yet (admin links it in the app)
+  needRoom: "บัญชี LINE ของคุณยังไม่ได้ผูกกับห้องพัก กรุณาติดต่อผู้ดูแลเพื่อผูกบัญชีก่อน",
   // room has no bill waiting to be paid
   noBill: (room: string) => `ไม่พบบิลที่ต้องชำระสำหรับห้อง ${room}`,
   // success — slip recorded, awaiting owner approval. Shows the payer name so a
@@ -69,17 +70,6 @@ export async function GET() {
   });
 }
 
-/**
- * Read a room number from a tenant's text — but ONLY when the whole message is
- * essentially just that number (optionally prefixed by ห้อง/room/#). This stops
- * a stray number in normal chat ("จ่าย 500 บาท") from being taken as a room.
- */
-function parseRoom(text: string | undefined): string | null {
-  if (!text) return null;
-  const m = text.trim().match(/^(?:ห้อง|เลขห้อง|room|#)?\s*([0-9]{1,4})$/i);
-  return m ? m[1] : null;
-}
-
 export async function POST(req: Request) {
   const secret = process.env.LINE_CHANNEL_SECRET;
   const accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -102,21 +92,28 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient();
 
-  // A tenant types their room number as a text message. LINE delivers text and
-  // the slip image as SEPARATE webhook calls, so remember the room per user in
-  // this delivery AND persist it, so a later image message can look it up.
-  const roomByUser = new Map<string, string>();
+  // Record every LINE user who messaged us (with their display name) so an admin
+  // can link them to a room in the app. Only fetch the profile when we don't
+  // have their name yet. The room itself is set ONLY by an admin — never from
+  // tenant text — so a tenant can't mis-link themselves.
+  const seenUsers = new Set<string>();
   for (const ev of events) {
-    if (ev.type === "message" && ev.message?.type === "text") {
-      const room = parseRoom(ev.message.text);
-      if (room && ev.source?.userId) {
-        roomByUser.set(ev.source.userId, room);
-        await supabase.from("line_user_rooms").upsert({
-          user_id: ev.source.userId,
-          room,
-          updated_at: new Date().toISOString(),
-        });
-      }
+    if (ev.type === "message" && ev.source?.userId)
+      seenUsers.add(ev.source.userId);
+  }
+  for (const uid of seenUsers) {
+    const { data: existing } = await supabase
+      .from("line_user_rooms")
+      .select("display_name")
+      .eq("user_id", uid)
+      .maybeSingle();
+    if (!existing || !existing.display_name) {
+      const name = await getLineProfile(uid, accessToken);
+      await supabase.from("line_user_rooms").upsert({
+        user_id: uid,
+        display_name: name ?? "",
+        updated_at: new Date().toISOString(),
+      });
     }
   }
 
@@ -125,9 +122,9 @@ export async function POST(req: Request) {
     const replyToken = ev.replyToken;
     if (!replyToken || !ev.message.id) continue;
     const userId = ev.source?.userId;
-    // room from this delivery, else the last one this user persisted
-    let room = userId ? roomByUser.get(userId) ?? null : null;
-    if (!room && userId) {
+    // room comes only from the admin-assigned link for this LINE account
+    let room: string | null = null;
+    if (userId) {
       const { data: st } = await supabase
         .from("line_user_rooms")
         .select("room")

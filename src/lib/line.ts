@@ -34,6 +34,23 @@ export async function getLineImage(
   return Buffer.from(await res.arrayBuffer());
 }
 
+/** Fetch a user's LINE display name (best-effort; null on failure). */
+export async function getLineProfile(
+  userId: string,
+  accessToken: string
+): Promise<string | null> {
+  try {
+    const res = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { displayName?: string };
+    return j.displayName ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Reply to an event with a single text message (best-effort). */
 export async function replyLine(
   replyToken: string,

@@ -7,6 +7,11 @@ import {
   PaymentAccounts,
   type AccountRow,
 } from "@/components/settings/payment-accounts";
+import {
+  LineAccounts,
+  type LineAccountRow,
+  type RoomOption,
+} from "@/components/settings/line-accounts";
 
 export default async function SettingsPage() {
   await getSessionContext();
@@ -35,6 +40,34 @@ export default async function SettingsPage() {
       : null,
   }));
 
+  // LINE accounts that have messaged the OA + rooms to link them to.
+  const { data: lineRows } = await supabase
+    .from("line_user_rooms")
+    .select("user_id, display_name, room, updated_at")
+    .order("updated_at", { ascending: false });
+  const lineAccounts: LineAccountRow[] = (lineRows ?? []).map((r) => ({
+    userId: r.user_id as string,
+    displayName: (r.display_name as string) ?? "",
+    room: (r.room as string | null) ?? null,
+  }));
+
+  const { data: activeContracts } = await supabase
+    .from("contracts")
+    .select("room:rooms(room_number), tenant:tenants(full_name)")
+    .eq("status", "ACTIVE");
+  const roomOptions: RoomOption[] = (
+    (activeContracts ?? []) as unknown as Array<{
+      room: { room_number: string } | null;
+      tenant: { full_name: string } | null;
+    }>
+  )
+    .filter((c) => c.room)
+    .map((c) => ({
+      room: c.room!.room_number,
+      label: `${c.room!.room_number} — ${c.tenant?.full_name ?? ""}`,
+    }))
+    .sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }));
+
   const t = await getTranslations("settings");
 
   return (
@@ -46,6 +79,7 @@ export default async function SettingsPage() {
         phone={prop?.phone ?? null}
       />
       <PaymentAccounts accounts={accounts} />
+      <LineAccounts accounts={lineAccounts} rooms={roomOptions} />
     </div>
   );
 }

@@ -288,8 +288,15 @@
     "editAccount": "Edit account",
     "deleteAccount": "Delete account",
     "deleteConfirm": "Confirm delete",
+    "lineTitle": "Tenant LINE accounts",
+    "lineHint": "Link a tenant's LINE account to a room so their slips auto-record to that room.",
+    "lineEmpty": "No tenants have messaged via LINE yet",
+    "lineLinkedTo": "Linked to room",
+    "lineUnlinked": "Not linked to a room",
+    "lineNoRoom": "— none —",
     "errors": {
       "required": "Please fill in all fields",
+      "not_allowed": "This action isn't allowed",
       "auth": "Please sign in again"
     }
   },

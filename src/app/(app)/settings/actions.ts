@@ -145,6 +145,34 @@ export async function deletePaymentAccount(
   return { ok: true };
 }
 
+/** Link (or unlink) a tenant's LINE account to a room. Staff-gated by RLS. */
+export async function assignLineRoom(
+  userId: string,
+  room: string | null
+): Promise<SettingsState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "auth" };
+  if (!userId) return { error: "required" };
+
+  const { data, error } = await supabase
+    .from("line_user_rooms")
+    .update({
+      room: room || null,
+      linked_by: user.id,
+      linked_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .select("user_id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "not_allowed" };
+
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 export async function togglePaymentAccount(
   _prev: SettingsState,
   formData: FormData
