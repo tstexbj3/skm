@@ -291,6 +291,18 @@ export async function updateBill(
   const digits = n(bill.meter_digits);
   const water_persons = Math.max(0, Math.trunc(num(formData.get("water_persons"))));
   const water_end = num(formData.get("water_end"));
+  // Opening (start) readings are editable — needed for the first bill, whose
+  // start would otherwise be 0. Fall back to the stored start when not sent.
+  const rawWaterStart = formData.get("water_start");
+  const water_start =
+    rawWaterStart != null && String(rawWaterStart) !== ""
+      ? num(rawWaterStart)
+      : n(bill.water_start);
+  const rawElecStart = formData.get("elec_start");
+  const elec_start =
+    rawElecStart != null && String(rawElecStart) !== ""
+      ? num(rawElecStart)
+      : n(bill.elec_start);
   const elec_is_manual =
     formData.get("elec_is_manual") === "on" ||
     formData.get("elec_is_manual") === "true";
@@ -311,13 +323,13 @@ export async function updateBill(
     mode: bill.water_billing_mode,
     rate: n(bill.water_rate),
     persons: water_persons,
-    start: n(bill.water_start),
+    start: water_start,
     end: water_end,
     vat: n(bill.water_vat_rate),
     digits,
   });
   const elec_amount = computeElectricity({
-    start: n(bill.elec_start),
+    start: elec_start,
     end: elec_end,
     rate: n(bill.elec_unit_rate),
     vat: n(bill.elec_vat_rate),
@@ -347,8 +359,10 @@ export async function updateBill(
     .from("bills")
     .update({
       water_persons,
+      water_start,
       water_end,
       water_amount,
+      elec_start,
       elec_end,
       elec_amount,
       elec_is_manual,
@@ -370,8 +384,10 @@ export async function updateBill(
 
 export type MeterReading = {
   billId: string;
-  elecEnd: number | null; // null = leave electricity unchanged
-  waterEnd: number | null; // null = leave water unchanged
+  elecStart: number | null; // null = leave the electricity start unchanged
+  elecEnd: number | null; // null = leave the electricity end unchanged
+  waterStart: number | null; // null = leave the water start unchanged
+  waterEnd: number | null; // null = leave the water end unchanged
 };
 
 /**
@@ -393,7 +409,12 @@ export async function saveMeterReadings(
   if (!user) return { error: "auth" };
 
   const targets = readings.filter(
-    (r) => r.billId && (r.elecEnd != null || r.waterEnd != null)
+    (r) =>
+      r.billId &&
+      (r.elecStart != null ||
+        r.elecEnd != null ||
+        r.waterStart != null ||
+        r.waterEnd != null)
   );
   if (!targets.length) return { ok: true, saved: 0 };
   const ids = targets.map((r) => r.billId);
@@ -401,7 +422,7 @@ export async function saveMeterReadings(
   const { data: bills } = await supabase
     .from("bills")
     .select(
-      "id, status, water_billing_mode, water_rate, water_vat_rate, water_start, water_persons, water_amount, elec_unit_rate, elec_vat_rate, elec_start, elec_min_charge, meter_digits, elec_is_manual, elec_amount, rent_amount, late_fee_amount, other_charge_amount"
+      "id, status, water_billing_mode, water_rate, water_vat_rate, water_start, water_end, water_persons, water_amount, elec_unit_rate, elec_vat_rate, elec_start, elec_end, elec_min_charge, meter_digits, elec_is_manual, elec_amount, rent_amount, late_fee_amount, other_charge_amount"
     )
     .in("id", ids);
   const billMap = new Map((bills ?? []).map((b) => [b.id as string, b]));
@@ -427,31 +448,37 @@ export async function saveMeterReadings(
     const patch: Record<string, unknown> = {};
 
     let water_amount = n(b.water_amount);
-    if (mode === "PER_UNIT" && r.waterEnd != null) {
+    if (mode === "PER_UNIT" && (r.waterStart != null || r.waterEnd != null)) {
+      const water_start = r.waterStart ?? n(b.water_start);
+      const water_end = r.waterEnd ?? n(b.water_end);
       water_amount = computeWater({
         mode,
         rate: n(b.water_rate),
         persons: n(b.water_persons),
-        start: n(b.water_start),
-        end: r.waterEnd,
+        start: water_start,
+        end: water_end,
         vat: n(b.water_vat_rate),
         digits,
       });
-      patch.water_end = r.waterEnd;
+      patch.water_start = water_start;
+      patch.water_end = water_end;
       patch.water_amount = water_amount;
     }
 
     let elec_amount = n(b.elec_amount);
-    if (!b.elec_is_manual && r.elecEnd != null) {
+    if (!b.elec_is_manual && (r.elecStart != null || r.elecEnd != null)) {
+      const elec_start = r.elecStart ?? n(b.elec_start);
+      const elec_end = r.elecEnd ?? n(b.elec_end);
       elec_amount = computeElectricity({
-        start: n(b.elec_start),
-        end: r.elecEnd,
+        start: elec_start,
+        end: elec_end,
         rate: n(b.elec_unit_rate),
         vat: n(b.elec_vat_rate),
         digits,
         minCharge: n(b.elec_min_charge),
       });
-      patch.elec_end = r.elecEnd;
+      patch.elec_start = elec_start;
+      patch.elec_end = elec_end;
       patch.elec_amount = elec_amount;
     }
 

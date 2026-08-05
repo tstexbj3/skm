@@ -44,24 +44,31 @@ export function MetersGrid({
   const [msg, setMsg] = useState<string | null>(null);
 
   // per-row input strings, prefilled with the current readings
-  const [elec, setElec] = useState<Record<string, string>>(() =>
-    Object.fromEntries(rows.map((r) => [r.billId, String(r.elecEnd)]))
-  );
-  const [water, setWater] = useState<Record<string, string>>(() =>
-    Object.fromEntries(rows.map((r) => [r.billId, String(r.waterEnd)]))
-  );
+  const mk = (pick: (r: MeterRow) => number) =>
+    Object.fromEntries(rows.map((r) => [r.billId, String(pick(r))]));
+  const [elecS, setElecS] = useState<Record<string, string>>(() => mk((r) => r.elecStart));
+  const [elecE, setElecE] = useState<Record<string, string>>(() => mk((r) => r.elecEnd));
+  const [waterS, setWaterS] = useState<Record<string, string>>(() => mk((r) => r.waterStart));
+  const [waterE, setWaterE] = useState<Record<string, string>>(() => mk((r) => r.waterEnd));
+
+  const cell =
+    "h-8 w-20 rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
   function save() {
     setMsg(null);
     const readings: MeterReading[] = [];
     for (const r of rows) {
-      const e = toNum(elec[r.billId] ?? "");
-      const w = toNum(water[r.billId] ?? "");
-      const elecEnd = !r.elecManual && e != null && e !== r.elecEnd ? e : null;
-      const waterEnd =
-        r.waterMode === "PER_UNIT" && w != null && w !== r.waterEnd ? w : null;
-      if (elecEnd != null || waterEnd != null)
-        readings.push({ billId: r.billId, elecEnd, waterEnd });
+      const metered = r.waterMode === "PER_UNIT";
+      const eS = toNum(elecS[r.billId] ?? "");
+      const eE = toNum(elecE[r.billId] ?? "");
+      const wS = toNum(waterS[r.billId] ?? "");
+      const wE = toNum(waterE[r.billId] ?? "");
+      const elecStart = !r.elecManual && eS != null && eS !== r.elecStart ? eS : null;
+      const elecEnd = !r.elecManual && eE != null && eE !== r.elecEnd ? eE : null;
+      const waterStart = metered && wS != null && wS !== r.waterStart ? wS : null;
+      const waterEnd = metered && wE != null && wE !== r.waterEnd ? wE : null;
+      if (elecStart != null || elecEnd != null || waterStart != null || waterEnd != null)
+        readings.push({ billId: r.billId, elecStart, elecEnd, waterStart, waterEnd });
     }
     if (readings.length === 0) {
       setMsg(t("meters.nothingChanged"));
@@ -105,14 +112,14 @@ export function MetersGrid({
             <tr>
               <th className="px-3 py-2 font-medium">{t("room")}</th>
               <th className="px-3 py-2 font-medium">{t("payer")}</th>
-              <th className="px-3 py-2 text-right font-medium">
+              <th className="px-3 py-2 font-medium">
                 {t("electricity")} · {t("meterStart")}
               </th>
               <th className="px-3 py-2 font-medium">
                 {t("electricity")} · {t("meterEnd")}
               </th>
               <th className="px-3 py-2 text-right font-medium">{t("units")}</th>
-              <th className="px-3 py-2 text-right font-medium">
+              <th className="px-3 py-2 font-medium">
                 {t("water")} · {t("meterStart")}
               </th>
               <th className="px-3 py-2 font-medium">
@@ -123,20 +130,36 @@ export function MetersGrid({
           </thead>
           <tbody>
             {rows.map((r) => {
-              const eVal = toNum(elec[r.billId] ?? "");
-              const eUnits =
-                eVal != null ? meterUnits(r.elecStart, eVal, r.digits) : null;
-              const wVal = toNum(water[r.billId] ?? "");
-              const wUnits =
-                wVal != null ? meterUnits(r.waterStart, wVal, r.digits) : null;
               const metered = r.waterMode === "PER_UNIT";
+              const eS = toNum(elecS[r.billId] ?? "");
+              const eE = toNum(elecE[r.billId] ?? "");
+              const eUnits =
+                eE != null ? meterUnits(eS ?? r.elecStart, eE, r.digits) : null;
+              const wS = toNum(waterS[r.billId] ?? "");
+              const wE = toNum(waterE[r.billId] ?? "");
+              const wUnits =
+                wE != null ? meterUnits(wS ?? r.waterStart, wE, r.digits) : null;
               return (
                 <tr key={r.billId} className="border-t">
                   <td className="px-3 py-2 font-medium">{r.room}</td>
                   <td className="px-3 py-2">{r.payer}</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">
-                    {r.elecStart}
+                  {/* electricity start */}
+                  <td className="px-3 py-2">
+                    {r.elecManual ? (
+                      <span className="text-muted-foreground">{r.elecStart}</span>
+                    ) : (
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={elecS[r.billId] ?? ""}
+                        onChange={(ev) =>
+                          setElecS((s) => ({ ...s, [r.billId]: ev.target.value }))
+                        }
+                        className={cell}
+                      />
+                    )}
                   </td>
+                  {/* electricity end */}
                   <td className="px-3 py-2">
                     {r.elecManual ? (
                       <Link
@@ -146,33 +169,47 @@ export function MetersGrid({
                         {t("manualElec")}
                       </Link>
                     ) : (
-                      <Input
+                      <input
                         type="number"
                         inputMode="numeric"
-                        value={elec[r.billId] ?? ""}
+                        value={elecE[r.billId] ?? ""}
                         onChange={(ev) =>
-                          setElec((s) => ({ ...s, [r.billId]: ev.target.value }))
+                          setElecE((s) => ({ ...s, [r.billId]: ev.target.value }))
                         }
-                        className="h-8 w-24"
+                        className={cell}
                       />
                     )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {eUnits ?? "—"}
                   </td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">
-                    {metered ? r.waterStart : "—"}
-                  </td>
+                  {/* water start */}
                   <td className="px-3 py-2">
                     {metered ? (
-                      <Input
+                      <input
                         type="number"
                         inputMode="numeric"
-                        value={water[r.billId] ?? ""}
+                        value={waterS[r.billId] ?? ""}
                         onChange={(ev) =>
-                          setWater((s) => ({ ...s, [r.billId]: ev.target.value }))
+                          setWaterS((s) => ({ ...s, [r.billId]: ev.target.value }))
                         }
-                        className="h-8 w-24"
+                        className={cell}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  {/* water end */}
+                  <td className="px-3 py-2">
+                    {metered ? (
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={waterE[r.billId] ?? ""}
+                        onChange={(ev) =>
+                          setWaterE((s) => ({ ...s, [r.billId]: ev.target.value }))
+                        }
+                        className={cell}
                       />
                     ) : (
                       <span className="text-xs text-muted-foreground">

@@ -80,7 +80,9 @@ export function BillForm({
   const digits = n(bill.meter_digits);
   const elecMin = n(bill.elec_min_charge);
   const [persons, setPersons] = useState(bill.water_persons ?? 0);
+  const [waterStart, setWaterStart] = useState(n(bill.water_start));
   const [waterEnd, setWaterEnd] = useState(n(bill.water_end));
+  const [elecStart, setElecStart] = useState(n(bill.elec_start));
   const [elecEnd, setElecEnd] = useState(n(bill.elec_end));
   const [isManual, setIsManual] = useState(Boolean(bill.elec_is_manual));
   const [manualAmount, setManualAmount] = useState(
@@ -94,7 +96,7 @@ export function BillForm({
         mode,
         rate: n(bill.water_rate),
         persons,
-        start: n(bill.water_start),
+        start: waterStart,
         end: waterEnd,
         vat: n(bill.water_vat_rate),
         digits,
@@ -102,7 +104,7 @@ export function BillForm({
     : n(bill.water_amount);
   const elecLive = editable
     ? computeElectricity({
-        start: n(bill.elec_start),
+        start: elecStart,
         end: elecEnd,
         rate: n(bill.elec_unit_rate),
         vat: n(bill.elec_vat_rate),
@@ -133,7 +135,7 @@ export function BillForm({
     });
   }
 
-  const elecUnits = meterUnits(n(bill.elec_start), elecEnd, digits);
+  const elecUnits = meterUnits(elecStart, elecEnd, digits);
 
   return (
     <form action={onSubmit} className="space-y-4">
@@ -170,9 +172,11 @@ export function BillForm({
           )}
           {editable && mode === "PER_UNIT" && (
             <MeterInputs
-              start={n(bill.water_start)}
+              startValue={waterStart}
               endValue={waterEnd}
+              startName="water_start"
               name="water_end"
+              onStart={setWaterStart}
               onEnd={setWaterEnd}
               startLabel={t("meterStart")}
               endLabel={t("meterEnd")}
@@ -221,9 +225,11 @@ export function BillForm({
           {editable && isManual && (
             <>
               <MeterInputs
-                start={n(bill.elec_start)}
+                startValue={elecStart}
                 endValue={elecEnd}
+                startName="elec_start"
                 name="elec_end"
+                onStart={setElecStart}
                 onEnd={setElecEnd}
                 startLabel={t("meterStart")}
                 endLabel={t("latestReading")}
@@ -240,9 +246,11 @@ export function BillForm({
           {editable && !isManual && (
             <>
               <MeterInputs
-                start={n(bill.elec_start)}
+                startValue={elecStart}
                 endValue={elecEnd}
+                startName="elec_start"
                 name="elec_end"
+                onStart={setElecStart}
                 onEnd={setElecEnd}
                 startLabel={t("meterStart")}
                 endLabel={t("meterEnd")}
@@ -445,16 +453,20 @@ function NumInput({
 }
 
 function MeterInputs({
-  start,
+  startValue,
   endValue,
+  startName,
   name,
+  onStart,
   onEnd,
   startLabel,
   endLabel,
 }: {
-  start: number;
+  startValue: number;
   endValue: number;
+  startName: string;
   name: string;
+  onStart: (v: number) => void;
   onEnd: (v: number) => void;
   startLabel: string;
   endLabel: string;
@@ -463,7 +475,7 @@ function MeterInputs({
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-1">
         <span className="text-xs text-muted-foreground">{startLabel}</span>
-        <Input value={start} readOnly className="h-8 w-24 bg-muted" />
+        <NumInput value={startValue} name={startName} onChange={onStart} />
       </div>
       <span>–</span>
       <div className="flex items-center gap-1">
