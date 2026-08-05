@@ -1,7 +1,8 @@
 import { getTranslations } from "next-intl/server";
 import { getSessionContext } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { QR_BUCKET } from "@/lib/buckets";
+import { signedUrl } from "@/lib/supabase/storage";
+import { QR_BUCKET, PAYMENT_SLIPS_BUCKET } from "@/lib/buckets";
 import { PropertyForm } from "@/components/settings/property-form";
 import {
   PaymentAccounts,
@@ -12,6 +13,10 @@ import {
   type LineAccountRow,
   type RoomOption,
 } from "@/components/settings/line-accounts";
+import {
+  PendingSlips,
+  type PendingSlipRow,
+} from "@/components/settings/pending-slips";
 
 export default async function SettingsPage() {
   await getSessionContext();
@@ -40,10 +45,29 @@ export default async function SettingsPage() {
       : null,
   }));
 
-  // LINE accounts that have messaged the OA + rooms to link them to.
+  // Slips from unknown LINE accounts, awaiting an admin to assign a room.
+  const { data: pendingData } = await supabase
+    .from("line_pending_slips")
+    .select("id, display_name, amount, sender_name, bank, image_path, created_at")
+    .eq("status", "PENDING")
+    .order("created_at", { ascending: false });
+  const pendingSlips: PendingSlipRow[] = await Promise.all(
+    (pendingData ?? []).map(async (p) => ({
+      id: p.id as string,
+      displayName: (p.display_name as string) ?? "",
+      amount: String(p.amount),
+      sender: (p.sender_name as string) ?? "",
+      bank: (p.bank as string) ?? "",
+      slipUrl: await signedUrl(PAYMENT_SLIPS_BUCKET, p.image_path as string | null),
+      date: String(p.created_at).slice(0, 10),
+    }))
+  );
+
+  // LINE accounts already linked to a room (managed below).
   const { data: lineRows } = await supabase
     .from("line_user_rooms")
     .select("user_id, display_name, room, updated_at")
+    .not("room", "is", null)
     .order("updated_at", { ascending: false });
   const lineAccounts: LineAccountRow[] = (lineRows ?? []).map((r) => ({
     userId: r.user_id as string,
@@ -79,6 +103,7 @@ export default async function SettingsPage() {
         phone={prop?.phone ?? null}
       />
       <PaymentAccounts accounts={accounts} />
+      <PendingSlips slips={pendingSlips} rooms={roomOptions} />
       <LineAccounts accounts={lineAccounts} rooms={roomOptions} />
     </div>
   );

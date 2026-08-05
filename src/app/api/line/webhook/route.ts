@@ -20,16 +20,12 @@ export const runtime = "nodejs";
 // The {room} / {amount} placeholders are filled in automatically; keep them.
 // ───────────────────────────────────────────────────────────────────────────
 const MSG = {
-  // slip image couldn't be read by EasySlip
-  unreadable: "อ่านสลิปไม่สำเร็จ กรุณาส่งภาพสลิปที่ชัดเจนอีกครั้ง",
-  // this slip (same transaction ref) was already recorded
+  // this slip (same transaction ref) was already recorded / already received
   duplicate: "สลิปนี้ถูกบันทึกไว้แล้ว",
-  // this LINE account isn't linked to a room yet (admin links it in the app)
-  needRoom: "บัญชี LINE ของคุณยังไม่ได้ผูกกับห้องพัก กรุณาติดต่อผู้ดูแลเพื่อผูกบัญชีก่อน",
-  // room has no bill waiting to be paid
-  noBill: (room: string) => `ไม่พบบิลที่ต้องชำระสำหรับห้อง ${room}`,
-  // success — slip recorded, awaiting owner approval. Shows the payer name so a
-  // tenant can tell immediately if their slip matched the wrong room.
+  // slip received from an account not yet linked to a room — held for review
+  pending: "ได้รับสลิปของคุณแล้ว กำลังตรวจสอบและจะยืนยันเร็วๆ นี้",
+  // success — slip recorded to a linked room, awaiting owner approval. Shows the
+  // payer name so a tenant can tell if their slip matched the wrong room.
   received: (room: string, name: string, amount: string) =>
     `รับสลิปห้อง ${room} (${name}) จำนวน ฿${amount} แล้ว รอการยืนยัน`,
   // unexpected error
@@ -92,123 +88,104 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient();
 
-  // Record every LINE user who messaged us (with their display name) so an admin
-  // can link them to a room in the app. Only fetch the profile when we don't
-  // have their name yet. The room itself is set ONLY by an admin — never from
-  // tenant text — so a tenant can't mis-link themselves.
-  const seenUsers = new Set<string>();
-  for (const ev of events) {
-    if (ev.type === "message" && ev.source?.userId)
-      seenUsers.add(ev.source.userId);
-  }
-  for (const uid of seenUsers) {
-    const { data: existing } = await supabase
-      .from("line_user_rooms")
-      .select("display_name")
-      .eq("user_id", uid)
-      .maybeSingle();
-    if (!existing || !existing.display_name) {
-      const name = await getLineProfile(uid, accessToken);
-      await supabase.from("line_user_rooms").upsert({
-        user_id: uid,
-        display_name: name ?? "",
-        updated_at: new Date().toISOString(),
-      });
-    }
-  }
-
+  // Only react to slip IMAGES. Text questions and non-slip photos are left for a
+  // human — the bot stays silent, so the general support chat isn't disturbed
+  // and non-tenants never surface in the app.
   for (const ev of events) {
     if (ev.type !== "message" || ev.message?.type !== "image") continue;
     const replyToken = ev.replyToken;
-    if (!replyToken || !ev.message.id) continue;
     const userId = ev.source?.userId;
-    // room comes only from the admin-assigned link for this LINE account
-    let room: string | null = null;
-    if (userId) {
-      const { data: st } = await supabase
-        .from("line_user_rooms")
-        .select("room")
-        .eq("user_id", userId)
-        .maybeSingle();
-      room = (st?.room as string | undefined) ?? null;
-    }
+    if (!replyToken || !ev.message.id || !userId) continue;
 
     try {
       const image = await getLineImage(ev.message.id, accessToken);
       const verified = await verifySlipImage(image, slipToken);
-      // TEMP: log the raw EasySlip result so we can confirm field paths on the
-      // first real slip, then remove. Vercel captures this in function logs.
-      console.log("[line] easyslip result:", JSON.stringify(verified));
       const slip = verified.data;
-      if (!verified.ok || !slip?.ref || !slip.amount) {
-        await replyLine(replyToken, MSG.unreadable, accessToken);
-        continue;
-      }
+      // Not a readable bank slip → stay silent (probably a normal photo).
+      if (!verified.ok || !slip?.ref || !slip.amount) continue;
 
-      // Never count the same transfer twice.
-      const { data: dup } = await supabase
-        .from("payments")
-        .select("id")
-        .eq("slip_ref", slip.ref)
-        .maybeSingle();
-      if (dup) {
+      // Never record the same transfer twice (already recorded or already held).
+      const [{ data: paidDup }, { data: pendDup }] = await Promise.all([
+        supabase.from("payments").select("id").eq("slip_ref", slip.ref).maybeSingle(),
+        supabase
+          .from("line_pending_slips")
+          .select("id")
+          .eq("slip_ref", slip.ref)
+          .maybeSingle(),
+      ]);
+      if (paidDup || pendDup) {
         await replyLine(replyToken, MSG.duplicate, accessToken);
         continue;
       }
 
-      if (!room) {
-        await replyLine(replyToken, MSG.needRoom, accessToken);
-        continue;
-      }
-
-      // Latest payable bill for that room (issued, not draft/void).
-      const { data: bill } = await supabase
-        .from("bills")
-        .select("id, room_number, payer_name, status")
-        .eq("room_number", room)
-        .in("status", ["SENT", "APPROVED", "PRINTED"])
-        .order("billing_month", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (!bill) {
-        await replyLine(replyToken, MSG.noBill(room), accessToken);
-        continue;
-      }
-
-      // Store the slip image where manual slips live (private bucket).
+      // Keep the slip image (private bucket) — needed for either path.
       const path = `line/${crypto.randomUUID()}.jpg`;
       await supabase.storage
         .from(PAYMENT_SLIPS_BUCKET)
         .upload(path, image, { contentType: "image/jpeg", upsert: false });
 
-      const { error } = await supabase.from("payments").insert({
-        bill_id: bill.id,
-        amount: slip.amount,
-        method: "TRANSFER",
-        source: "LINE_AUTO",
-        slip_image_url: path,
-        slip_ref: slip.ref,
-        slip_sender: slip.senderName,
-        slip_bank: slip.bank,
-        slip_verified_at: new Date().toISOString(),
-        verified_amount: slip.amount,
-        status: "RECORDED",
-      });
-      if (error) {
-        // Unique-index race on slip_ref → treat as already recorded.
-        await replyLine(replyToken, MSG.duplicate, accessToken);
-        continue;
+      // Is this LINE account already linked to a room?
+      const { data: link } = await supabase
+        .from("line_user_rooms")
+        .select("room")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const room = (link?.room as string | undefined) ?? null;
+
+      // Linked → record straight to that room's payable bill.
+      if (room) {
+        const { data: bill } = await supabase
+          .from("bills")
+          .select("id, payer_name")
+          .eq("room_number", room)
+          .in("status", ["SENT", "APPROVED", "PRINTED"])
+          .order("billing_month", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (bill) {
+          const { error } = await supabase.from("payments").insert({
+            bill_id: bill.id,
+            amount: slip.amount,
+            method: "TRANSFER",
+            source: "LINE_AUTO",
+            slip_image_url: path,
+            slip_ref: slip.ref,
+            slip_sender: slip.senderName,
+            slip_bank: slip.bank,
+            slip_verified_at: new Date().toISOString(),
+            verified_amount: slip.amount,
+            status: "RECORDED",
+          });
+          if (!error) {
+            await replyLine(
+              replyToken,
+              MSG.received(
+                room,
+                (bill.payer_name as string) ?? "",
+                slip.amount.toLocaleString()
+              ),
+              accessToken
+            );
+            continue;
+          }
+          // insert failed → fall through and hold it for the admin instead
+        }
+        // linked but no payable bill yet → hold for the admin
       }
 
-      await replyLine(
-        replyToken,
-        MSG.received(
-          room,
-          (bill.payer_name as string) ?? "",
-          slip.amount.toLocaleString()
-        ),
-        accessToken
-      );
+      // Unknown account (or linked with no bill) → hold for the admin to assign.
+      const name = await getLineProfile(userId, accessToken);
+      await supabase.from("line_pending_slips").insert({
+        line_user_id: userId,
+        display_name: name ?? "",
+        slip_ref: slip.ref,
+        amount: slip.amount,
+        sender_name: slip.senderName,
+        bank: slip.bank,
+        image_path: path,
+        status: "PENDING",
+      });
+      await replyLine(replyToken, MSG.pending, accessToken);
     } catch {
       await replyLine(replyToken, MSG.error, accessToken).catch(() => {});
     }
