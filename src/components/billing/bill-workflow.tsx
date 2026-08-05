@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Send, CheckCircle2, Printer } from "lucide-react";
@@ -28,6 +29,7 @@ export function BillWorkflow({
   printCount: number;
 }) {
   const t = useTranslations("billing");
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +41,7 @@ export function BillWorkflow({
       const res = await action({}, fd);
       if (res?.error)
         setError(t.has(`errors.${res.error}`) ? t(`errors.${res.error}`) : res.error);
+      else router.refresh();
     });
   }
 

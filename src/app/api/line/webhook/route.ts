@@ -79,6 +79,9 @@ export async function POST(req: Request) {
     try {
       const image = await getLineImage(ev.message.id, accessToken);
       const verified = await verifySlipImage(image, slipToken);
+      // TEMP: log the raw EasySlip result so we can confirm field paths on the
+      // first real slip, then remove. Vercel captures this in function logs.
+      console.log("[line] easyslip result:", JSON.stringify(verified));
       const slip = verified.data;
       if (!verified.ok || !slip?.ref || !slip.amount) {
         await replyLine(
