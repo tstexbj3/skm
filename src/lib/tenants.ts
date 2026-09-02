@@ -15,7 +15,7 @@ export type Contract = {
   id: string;
   tenant_id: string;
   room_id: string;
-  contract_scan_url: string | null;
+  contract_scan_urls: string[];
   occupant_count: number;
   advance_rent_amount: string;
   advance_rent_paid: string;

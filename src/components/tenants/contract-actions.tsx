@@ -6,7 +6,7 @@ import { RefreshCw, UserMinus } from "lucide-react";
 import { renewContract, endTenancy } from "@/app/(app)/tenants/actions";
 import { TENANT_MEDIA_BUCKET } from "@/lib/buckets";
 import { Button } from "@/components/ui/button";
-import { FileUpload } from "@/components/ui/file-upload";
+import { MultiFileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -88,7 +88,7 @@ function RenewDialog({
           </div>
           <div className="space-y-2">
             <Label>{t("newContractScan")}</Label>
-            <FileUpload name="contract_scan" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
+            <MultiFileUpload name="contract_scan" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

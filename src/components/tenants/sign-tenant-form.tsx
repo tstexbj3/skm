@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { signTenant, type SignState } from "@/app/(app)/tenants/actions";
 import { TENANT_MEDIA_BUCKET } from "@/lib/buckets";
 import { Button } from "@/components/ui/button";
-import { FileUpload } from "@/components/ui/file-upload";
+import { FileUpload, MultiFileUpload } from "@/components/ui/file-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -151,7 +151,7 @@ export function SignTenantForm({ rooms }: { rooms: VacantRoom[] }) {
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>{t("contractScan")}</Label>
-            <FileUpload name="contract_scan" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
+            <MultiFileUpload name="contract_scan" bucket={TENANT_MEDIA_BUCKET} onBusyChange={onBusy} />
           </div>
         </CardContent>
       </Card>

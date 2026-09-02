@@ -53,11 +53,14 @@ await client.connect();
 const referenced = new Set();
 for (const q of [
   "select photo_url, national_id_image_url, co_tenant_national_id_image_url from public.tenants",
-  "select contract_scan_url from public.contracts",
+  "select contract_scan_urls from public.contracts",
 ]) {
   const { rows } = await client.query(q);
   for (const row of rows)
-    for (const v of Object.values(row)) if (v) referenced.add(v);
+    for (const v of Object.values(row)) {
+      if (Array.isArray(v)) for (const p of v) referenced.add(p);
+      else if (v) referenced.add(v);
+    }
 }
 await client.end();
 

@@ -39,8 +39,10 @@ export async function signTenant(
     String(formData.get("national_id") ?? "") || null;
   const co_tenant_national_id_image_url =
     String(formData.get("co_tenant_national_id") ?? "") || null;
-  const contract_scan_url =
-    String(formData.get("contract_scan") ?? "") || null;
+  const contract_scan_urls = formData
+    .getAll("contract_scan")
+    .map(String)
+    .filter(Boolean);
 
   const { data: tenant, error: tErr } = await supabase
     .from("tenants")
@@ -73,7 +75,7 @@ export async function signTenant(
   const { error: cErr } = await supabase.from("contracts").insert({
     tenant_id: tenant.id,
     room_id,
-    contract_scan_url,
+    contract_scan_urls,
     occupant_count,
     advance_rent_amount: money(formData.get("advance_rent_amount")),
     advance_rent_paid: money(formData.get("advance_rent_paid")),
@@ -229,21 +231,61 @@ export async function updateTenant(
     }
   }
 
-  if (Object.keys(changes).length === 0) return { ok: true };
+  // Contract scan pages: the dialog submits the kept existing pages plus any
+  // newly uploaded ones; dropped pages are removed from storage below.
+  const contract_id = String(formData.get("contract_id") ?? "");
+  let scanChanged = false;
+  let currentPages: string[] = [];
+  let finalPages: string[] = [];
+  if (contract_id) {
+    const { data: contractRow } = await supabase
+      .from("contracts")
+      .select("contract_scan_urls")
+      .eq("id", contract_id)
+      .single<{ contract_scan_urls: string[] | null }>();
+    currentPages = contractRow?.contract_scan_urls ?? [];
+    const kept = formData
+      .getAll("contract_scan_keep")
+      .map(String)
+      .filter(Boolean);
+    const added = formData.getAll("contract_scan").map(String).filter(Boolean);
+    finalPages = [...kept, ...added];
+    scanChanged = JSON.stringify(finalPages) !== JSON.stringify(currentPages);
+  }
 
-  const { error: uErr } = await supabase
-    .from("tenants")
-    .update(next)
-    .eq("id", id);
-  if (uErr) return { error: uErr.message };
+  if (Object.keys(changes).length === 0 && !scanChanged) return { ok: true };
 
-  await supabase.from("audit_logs").insert({
-    table_name: "tenants",
-    record_id: id,
-    action: "UPDATE",
-    changes,
-    changed_by: user.id,
-  });
+  if (Object.keys(changes).length > 0) {
+    const { error: uErr } = await supabase
+      .from("tenants")
+      .update(next)
+      .eq("id", id);
+    if (uErr) return { error: uErr.message };
+
+    await supabase.from("audit_logs").insert({
+      table_name: "tenants",
+      record_id: id,
+      action: "UPDATE",
+      changes,
+      changed_by: user.id,
+    });
+  }
+
+  if (scanChanged) {
+    const { error: cErr } = await supabase
+      .from("contracts")
+      .update({ contract_scan_urls: finalPages })
+      .eq("id", contract_id);
+    if (cErr) return { error: cErr.message };
+
+    await supabase.from("audit_logs").insert({
+      table_name: "contracts",
+      record_id: contract_id,
+      action: "UPDATE",
+      changes: { contract_scan_urls: { old: currentPages, new: finalPages } },
+      changed_by: user.id,
+    });
+  }
 
   // Remove replaced files so they don't linger as stale storage.
   const stale = [
@@ -260,6 +302,9 @@ export async function updateTenant(
     current.co_tenant_national_id_image_url !== newCoId
       ? current.co_tenant_national_id_image_url
       : null,
+    ...(scanChanged
+      ? currentPages.filter((p) => !finalPages.includes(p))
+      : []),
   ].filter((p): p is string => Boolean(p));
   if (stale.length) {
     await supabase.storage.from(TENANT_BUCKET).remove(stale);
@@ -306,10 +351,10 @@ export async function purgeTenant(
     }>();
   const { data: contractsData } = await supabase
     .from("contracts")
-    .select("contract_scan_url, room:rooms(room_number)")
+    .select("contract_scan_urls, room:rooms(room_number)")
     .eq("tenant_id", id);
   const cs = (contractsData ?? []) as unknown as Array<{
-    contract_scan_url: string | null;
+    contract_scan_urls: string[] | null;
     room: { room_number: string } | null;
   }>;
 
@@ -317,7 +362,7 @@ export async function purgeTenant(
     tenant?.photo_url,
     tenant?.national_id_image_url,
     tenant?.co_tenant_national_id_image_url,
-    ...cs.map((c) => c.contract_scan_url),
+    ...cs.flatMap((c) => c.contract_scan_urls ?? []),
   ].filter((p): p is string => Boolean(p));
 
   // Also anything left in the tenant's own folder (stale edit re-uploads).
@@ -369,7 +414,7 @@ type ContractSnapshot = {
   start_date: string;
   end_date: string | null;
   term_months: number | null;
-  contract_scan_url: string | null;
+  contract_scan_urls: string[] | null;
 };
 
 /**
@@ -394,7 +439,7 @@ export async function renewContract(
   const { data: current } = await supabase
     .from("contracts")
     .select(
-      "tenant_id, room_id, occupant_count, advance_rent_amount, advance_rent_paid, damage_deposit_amount, damage_deposit_paid, start_date, end_date, term_months, contract_scan_url"
+      "tenant_id, room_id, occupant_count, advance_rent_amount, advance_rent_paid, damage_deposit_amount, damage_deposit_paid, start_date, end_date, term_months, contract_scan_urls"
     )
     .eq("id", contractId)
     .single<ContractSnapshot>();
@@ -408,7 +453,7 @@ export async function renewContract(
     current.end_date && current.end_date > today ? current.end_date : today;
   const new_end = addMonths(new_start, term_months);
 
-  const newScan = String(formData.get("contract_scan") ?? "") || null;
+  const newScan = formData.getAll("contract_scan").map(String).filter(Boolean);
 
   // 1) Archive the old contract (kept, not deleted; not ENDED so room stays).
   const { error: archiveErr } = await supabase
@@ -428,7 +473,8 @@ export async function renewContract(
       advance_rent_paid: current.advance_rent_paid,
       damage_deposit_amount: current.damage_deposit_amount,
       damage_deposit_paid: current.damage_deposit_paid,
-      contract_scan_url: newScan ?? current.contract_scan_url,
+      contract_scan_urls:
+        newScan.length > 0 ? newScan : current.contract_scan_urls ?? [],
       start_date: new_start,
       term_months,
       end_date: new_end,

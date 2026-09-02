@@ -71,14 +71,28 @@ export default async function TenantDetailPage({
     contracts.find((c) => c.status === "ACTIVE") ?? contracts[0] ?? null;
   const history = contracts.filter((c) => c.id !== contract?.id);
 
-  const [photo, natId, coId, scan] = await Promise.all([
+  const [photo, natId, coId] = await Promise.all([
     signedUrl(TENANT_BUCKET, tenant.photo_url),
     signedUrl(TENANT_BUCKET, tenant.national_id_image_url),
     signedUrl(TENANT_BUCKET, tenant.co_tenant_national_id_image_url),
-    signedUrl(TENANT_BUCKET, contract?.contract_scan_url),
   ]);
+  const scans = (
+    await Promise.all(
+      (contract?.contract_scan_urls ?? []).map((p: string) =>
+        signedUrl(TENANT_BUCKET, p)
+      )
+    )
+  ).filter((s): s is string => Boolean(s));
   const historyScans = await Promise.all(
-    history.map((h) => signedUrl(TENANT_BUCKET, h.contract_scan_url))
+    history.map(async (h) =>
+      (
+        await Promise.all(
+          ((h.contract_scan_urls ?? []) as string[]).map((p) =>
+            signedUrl(TENANT_BUCKET, p)
+          )
+        )
+      ).filter((s): s is string => Boolean(s))
+    )
   );
 
   const { data: recurringData } = contract?.id
@@ -100,6 +114,7 @@ export default async function TenantDetailPage({
   const logs = (logsData ?? []) as unknown as AuditLog[];
 
   const t = await getTranslations("tenants");
+  const tc = await getTranslations("common");
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -141,6 +156,15 @@ export default async function TenantDetailPage({
                 phone: tenant.phone,
                 co_tenant_name: tenant.co_tenant_name,
               }}
+              contract={
+                contract
+                  ? {
+                      id: contract.id,
+                      scan_urls: (contract.contract_scan_urls ??
+                        []) as string[],
+                    }
+                  : null
+              }
             />
             <PurgeTenantDialog
               tenantId={tenant.id}
@@ -227,11 +251,31 @@ export default async function TenantDetailPage({
         <CardContent className="grid gap-2 sm:grid-cols-2">
           <DocLink label={t("nationalId")} href={natId} viewLabel={t("view")} />
           <DocLink label={t("coTenantId")} href={coId} viewLabel={t("view")} />
-          <DocLink
-            label={t("contractScan")}
-            href={scan}
-            viewLabel={t("view")}
-          />
+          <div className="flex items-center justify-between rounded-md border px-3 py-2">
+            <span className="flex items-center gap-2 text-sm">
+              <FileText className="size-4 text-muted-foreground" />
+              {t("contractScan")}
+            </span>
+            {scans.length > 0 ? (
+              <span className="flex flex-wrap justify-end gap-x-3 gap-y-1">
+                {scans.map((href, i) => (
+                  <a
+                    key={href}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    {scans.length === 1
+                      ? t("view")
+                      : tc("pageN", { n: i + 1 })}
+                  </a>
+                ))}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">—</span>
+            )}
+          </div>
           <DocLink label={t("photo")} href={photo} viewLabel={t("view")} />
         </CardContent>
       </Card>
@@ -258,15 +302,22 @@ export default async function TenantDetailPage({
                     {t(`status.${h.status}`)}
                   </span>
                 </div>
-                {historyScans[i] ? (
-                  <a
-                    href={historyScans[i] as string}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 text-primary hover:underline"
-                  >
-                    {t("view")}
-                  </a>
+                {historyScans[i]?.length ? (
+                  <span className="flex shrink-0 flex-wrap justify-end gap-x-3 gap-y-1">
+                    {historyScans[i].map((href, j) => (
+                      <a
+                        key={href}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        {historyScans[i].length === 1
+                          ? t("view")
+                          : tc("pageN", { n: j + 1 })}
+                      </a>
+                    ))}
+                  </span>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}

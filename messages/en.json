@@ -38,7 +38,10 @@
     "comingSoonBody": "This module will be built in a later slice.",
     "ownerOnly": "Owner only",
     "uploading": "Uploading…",
-    "uploaded": "Uploaded"
+    "uploaded": "Uploaded",
+    "uploadedPages": "{n} page(s) uploaded",
+    "pageN": "Page {n}",
+    "removePage": "Remove page"
   },
   "dashboard": {
     "title": "Welcome",
@@ -149,6 +152,7 @@
     "renewTitle": "Renew contract",
     "renewHint": "Extend the term and attach a new contract scan (optional).",
     "newContractScan": "New contract scan",
+    "contractPagesHint": "Remove existing pages with ×, or choose files to add new pages",
     "endTenancy": "End tenancy",
     "endHint": "End the contract and free the room. Records are archived, not deleted.",
     "confirmEnd": "Confirm end",
