@@ -37,6 +37,8 @@
     "comingSoon": "Coming soon",
     "comingSoonBody": "This module will be built in a later slice.",
     "ownerOnly": "Owner only",
+    "takePhoto": "Take photo",
+    "chooseFile": "Choose file",
     "uploading": "Uploading…",
     "uploaded": "Uploaded",
     "uploadedPages": "{n} page(s) uploaded",

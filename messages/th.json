@@ -37,6 +37,8 @@
     "comingSoon": "กำลังพัฒนา",
     "comingSoonBody": "โมดูลนี้จะถูกสร้างในขั้นตอนถัดไป",
     "ownerOnly": "เฉพาะเจ้าของเท่านั้น",
+    "takePhoto": "ถ่ายรูป",
+    "chooseFile": "เลือกไฟล์",
     "uploading": "กำลังอัปโหลด...",
     "uploaded": "อัปโหลดแล้ว",
     "uploadedPages": "อัปโหลดแล้ว {n} หน้า",

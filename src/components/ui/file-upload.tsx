@@ -1,12 +1,66 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { X } from "lucide-react";
+import { Camera, FolderOpen, X } from "lucide-react";
 import { uploadFile } from "@/lib/supabase/upload";
 
-const fileClass =
-  "block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1 file:text-sm file:font-medium hover:file:bg-accent";
+// Two explicit buttons instead of a bare <input type="file">: Android Chrome's
+// photo picker for accept="image/*" offers NO camera option, so taking a photo
+// on the spot needs its own input with the `capture` attribute (which opens the
+// camera directly on both Android and iPhone).
+const btnClass =
+  "inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm font-medium hover:bg-accent";
+
+function PickerButtons({
+  accept,
+  multiple,
+  onChange,
+}: {
+  accept: string;
+  multiple?: boolean;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const t = useTranslations("common");
+  const camRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => camRef.current?.click()}
+        className={btnClass}
+      >
+        <Camera className="size-4" />
+        {t("takePhoto")}
+      </button>
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        className={btnClass}
+      >
+        <FolderOpen className="size-4" />
+        {t("chooseFile")}
+      </button>
+      <input
+        ref={camRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={onChange}
+        className="hidden"
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        onChange={onChange}
+        className="hidden"
+      />
+    </div>
+  );
+}
 
 /**
  * File input that uploads to Storage on selection and submits the resulting
@@ -49,11 +103,12 @@ export function FileUpload({
       setStatus("error");
       setErr(res.error ?? "error");
     }
+    e.target.value = "";
   }
 
   return (
     <div className="space-y-1">
-      <input type="file" accept={accept} onChange={onChange} className={fileClass} />
+      <PickerButtons accept={accept} onChange={onChange} />
       <input type="hidden" name={name} value={path} />
       {status === "uploading" && (
         <span className="text-xs text-muted-foreground">{t("uploading")}</span>
@@ -123,13 +178,7 @@ export function MultiFileUpload({
 
   return (
     <div className="space-y-1">
-      <input
-        type="file"
-        multiple
-        accept={accept}
-        onChange={onChange}
-        className={fileClass}
-      />
+      <PickerButtons accept={accept} multiple onChange={onChange} />
       {paths.map((p, i) => (
         <div
           key={p}
