@@ -29,6 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: "tenants", href: "/tenants", icon: "Users", module: "tenants" },
   { key: "billing", href: "/billing", icon: "FileText", module: "billing" },
   { key: "payments", href: "/payments", icon: "Wallet", module: "payments" },
+  { key: "lineSlips", href: "/line-slips", icon: "MessageSquareText", module: "payments" },
   { key: "expenses", href: "/expenses", icon: "Receipt", module: "expenses" },
   { key: "moveouts", href: "/moveouts", icon: "LogOut", module: "moveouts" },
   { key: "reports", href: "/reports", icon: "BarChart3", module: "reports" },

@@ -14,6 +14,7 @@ import {
   BarChart3,
   Briefcase,
   CheckCircle2,
+  MessageSquareText,
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const ICONS: Record<string, LucideIcon> = {
   BarChart3,
   Briefcase,
   CheckCircle2,
+  MessageSquareText,
   SlidersHorizontal,
 };
 
