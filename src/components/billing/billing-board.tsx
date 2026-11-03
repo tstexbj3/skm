@@ -16,7 +16,14 @@ export type BillRow = {
   contractId: string;
   room: string;
   tenant: string;
-  bill: { id: string; status: string; total: string; paid: number } | null;
+  bill: {
+    id: string;
+    status: string;
+    total: string;
+    paid: number;
+    /** Sum of RECORDED payments still waiting for the owner's approval. */
+    awaiting: number;
+  } | null;
 };
 
 export function BillingBoard({
@@ -109,6 +116,7 @@ export function BillingBoard({
               <th className="px-4 py-2 font-medium">{t("payer")}</th>
               <th className="px-4 py-2 font-medium">{t("status")}</th>
               <th className="px-4 py-2 font-medium">{t("total")}</th>
+              <th className="px-4 py-2 font-medium">{t("paymentCol")}</th>
               <th className="px-4 py-2"></th>
             </tr>
           </thead>
@@ -143,26 +151,55 @@ export function BillingBoard({
                 </td>
                 <td className="px-4 py-2">
                   {row.bill ? (
-                    <div>
-                      <span className="text-muted-foreground">
-                        ฿{formatMoney(row.bill.total)}
-                      </span>
-                      {(() => {
-                        const total = Number(row.bill.total);
-                        const paid = row.bill.paid;
-                        if (paid <= 0) return null;
-                        const outstanding = round2(total - paid);
-                        return outstanding <= 0.001 ? (
-                          <div className="text-xs font-medium text-emerald-600">
-                            {t("paidFull")}
-                          </div>
-                        ) : (
-                          <div className="text-xs font-medium text-amber-600">
-                            {t("owe")} ฿{formatMoney(String(outstanding))}
-                          </div>
-                        );
-                      })()}
-                    </div>
+                    <span className="text-muted-foreground">
+                      ฿{formatMoney(row.bill.total)}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  {row.bill ? (
+                    (() => {
+                      const total = Number(row.bill.total);
+                      const { paid, awaiting } = row.bill;
+                      const outstanding = round2(total - paid);
+                      const isDraft = row.bill.status === "DRAFT";
+                      return (
+                        <div className="space-y-0.5 text-xs font-medium">
+                          {paid > 0 && outstanding <= 0.001 ? (
+                            <div className="text-emerald-600">
+                              {t("paidFull")}
+                            </div>
+                          ) : (
+                            <>
+                              {paid > 0 && (
+                                <div className="text-emerald-600">
+                                  {t("paidSoFar")} ฿{formatMoney(String(paid))}
+                                </div>
+                              )}
+                              {!isDraft && outstanding > 0.001 && (
+                                <div className="text-amber-600">
+                                  {t("owe")} ฿
+                                  {formatMoney(String(outstanding))}
+                                </div>
+                              )}
+                            </>
+                          )}
+                          {awaiting > 0 && (
+                            <div className="text-blue-600">
+                              {t("awaitingApprove")} ฿
+                              {formatMoney(String(awaiting))}
+                            </div>
+                          )}
+                          {isDraft && paid <= 0 && awaiting <= 0 && (
+                            <span className="font-normal text-muted-foreground">
+                              —
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()
                   ) : (
                     "—"
                   )}
@@ -191,7 +228,7 @@ export function BillingBoard({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
                   {t("noContracts")}
                 </td>
               </tr>

@@ -33,10 +33,13 @@ export default async function BillingPage({
         .in("bill_id", billIds)
     : { data: [] as { bill_id: string; amount: string; status: string }[] };
   const paidByBill = new Map<string, number>();
+  const awaitingByBill = new Map<string, number>();
   for (const p of paysData ?? []) {
+    const k = p.bill_id as string;
     if (p.status === "APPROVED" || p.status === "RECONCILED") {
-      const k = p.bill_id as string;
       paidByBill.set(k, (paidByBill.get(k) ?? 0) + Number(p.amount));
+    } else if (p.status === "RECORDED") {
+      awaitingByBill.set(k, (awaitingByBill.get(k) ?? 0) + Number(p.amount));
     }
   }
 
@@ -62,6 +65,7 @@ export default async function BillingPage({
               status: b.status as string,
               total: String(b.total_amount),
               paid: paidByBill.get(b.id as string) ?? 0,
+              awaiting: awaitingByBill.get(b.id as string) ?? 0,
             }
           : null,
       };
