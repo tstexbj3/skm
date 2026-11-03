@@ -562,9 +562,18 @@ export async function deleteBill(
     .select("room_number, billing_month")
     .eq("id", bill_id)
     .maybeSingle();
-  const slips = (pays ?? [])
+  let slips = (pays ?? [])
     .map((p) => p.slip_image_url as string | null)
     .filter((s): s is string => Boolean(s));
+  // A LINE slip returning to PENDING keeps its image — never delete those files.
+  if (slips.length) {
+    const { data: held } = await supabase
+      .from("line_pending_slips")
+      .select("image_path")
+      .in("image_path", slips);
+    const keep = new Set((held ?? []).map((h) => h.image_path as string));
+    slips = slips.filter((s) => !keep.has(s));
+  }
 
   const { error } = await supabase.rpc("delete_bill", { p_bill_id: bill_id });
   if (error) {
