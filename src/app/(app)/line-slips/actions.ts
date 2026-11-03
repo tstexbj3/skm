@@ -44,17 +44,35 @@ export async function assignSlip(
     .single<PendingSlip>();
   if (!slip) return { error: "not_found" };
 
+  // The room must exist. A wrong-case match ("test" for "Test") resolves to
+  // the room's canonical name; anything else is refused and nothing is saved.
+  const { data: exact } = await supabase
+    .from("rooms")
+    .select("room_number")
+    .eq("room_number", room)
+    .maybeSingle();
+  let canonicalRoom = exact?.room_number as string | undefined;
+  if (!canonicalRoom) {
+    const { data: ci } = await supabase
+      .from("rooms")
+      .select("room_number")
+      .ilike("room_number", room.replace(/[%_]/g, "\\$&"))
+      .limit(2);
+    if (ci && ci.length === 1) canonicalRoom = ci[0].room_number as string;
+  }
+  if (!canonicalRoom) return { error: "room_not_found" };
+
   // Remember the account's room either way — future slips then auto-record.
   await supabase.from("line_user_rooms").upsert({
     user_id: slip.line_user_id,
-    room,
+    room: canonicalRoom,
     updated_at: new Date().toISOString(),
   });
 
   const { data: bill } = await supabase
     .from("bills")
     .select("id")
-    .eq("room_number", room)
+    .eq("room_number", canonicalRoom)
     .in("status", ["SENT", "APPROVED", "PRINTED"])
     .order("billing_month", { ascending: false })
     .limit(1)

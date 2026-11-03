@@ -84,6 +84,7 @@
     "errors": {
       "auth": "Please sign in again",
       "room_required": "Please enter a room number",
+      "room_not_found": "No such room in the system — check the room number and try again (nothing was saved)",
       "not_found": "Not found (may already be handled)",
       "no_bill": "The account's room was saved, but this room has no payable bill yet, so the slip stays pending — create and send this room's bill first, then press record again"
     }
