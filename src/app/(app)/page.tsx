@@ -16,7 +16,7 @@ import {
 import { getSessionContext } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { contractExpiry, EXPIRY_BADGE } from "@/lib/contracts";
-import { currentMonth, formatMoney2, n } from "@/lib/billing";
+import { billingPeriod, formatMoney2, n } from "@/lib/billing";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -37,7 +37,8 @@ export default async function DashboardPage() {
   const ctx = await getSessionContext();
   const supabase = await createClient();
 
-  const monthDate = `${currentMonth()}-01`;
+  const period = billingPeriod();
+  const monthDate = `${period}-01`;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + 30);
 
@@ -215,7 +216,7 @@ export default async function DashboardPage() {
           <StatTile
             href="/billing"
             icon={FileText}
-            label={t("tileBills")}
+            label={`${t("tileBills")} · ${period}`}
             value={`${issued.length}`}
             sub={t("tileBillsSub", { drafts })}
           />
@@ -224,7 +225,7 @@ export default async function DashboardPage() {
           <StatTile
             href="/billing"
             icon={Wallet}
-            label={t("tileOutstanding")}
+            label={`${t("tileOutstanding")} · ${period}`}
             value={`฿${formatMoney2(outstandingSum)}`}
             sub={t("tileOutstandingSub", { count: outstandingCount })}
           />

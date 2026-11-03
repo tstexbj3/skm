@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { requireModule } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { currentMonth, monthToDate, n, formatMoney2 } from "@/lib/billing";
+import { billingPeriod, monthToDate, n, formatMoney2 } from "@/lib/billing";
 import { addMonths } from "@/lib/contracts";
 import { STATUS_DOT } from "@/lib/rooms";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,7 @@ export default async function ReportsPage({
   await requireModule("reports");
   const supabase = await createClient();
   const sp = await searchParams;
-  const month = /^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : currentMonth();
+  const month = /^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : billingPeriod();
   const monthStart = monthToDate(month);
   const monthEnd = addMonths(monthStart, 1);
   const t = await getTranslations("reports");

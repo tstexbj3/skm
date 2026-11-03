@@ -104,3 +104,12 @@ export function monthToDate(month: string): string {
 export function currentMonth(now: Date = new Date()): string {
   return now.toISOString().slice(0, 7);
 }
+
+/**
+ * The billing period the building is working on: bills go out on the 5th for
+ * the PREVIOUS month's usage, so month-scoped pages default to last month.
+ */
+export function billingPeriod(now: Date = new Date()): string {
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}

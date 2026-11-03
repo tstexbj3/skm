@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { requireModule } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { currentMonth, monthToDate } from "@/lib/billing";
+import { billingPeriod, monthToDate } from "@/lib/billing";
 import { BillingBoard, type BillRow } from "@/components/billing/billing-board";
 
 export default async function BillingPage({
@@ -12,7 +12,7 @@ export default async function BillingPage({
   await requireModule("billing");
   const supabase = await createClient();
   const sp = await searchParams;
-  const month = /^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : currentMonth();
+  const month = /^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : billingPeriod();
   const billing_month = monthToDate(month);
 
   const { data: contractsData } = await supabase
