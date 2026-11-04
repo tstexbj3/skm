@@ -120,6 +120,7 @@ export async function updateUtilityRates(
     .limit(1)
     .maybeSingle();
 
+  // The building charges flat per-unit prices — no VAT on utilities.
   const { error } = latest
     ? await supabase
         .from("utility_rates")
@@ -128,11 +129,12 @@ export async function updateUtilityRates(
           electricity_unit_rate,
           electricity_min_charge,
           meter_digits,
+          vat_rate: 0,
         })
         .eq("id", latest.id)
     : await supabase.from("utility_rates").insert({
         electricity_unit_rate,
-        vat_rate: 0.07,
+        vat_rate: 0,
         water_person_rate,
         electricity_min_charge,
         meter_digits,
