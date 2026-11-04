@@ -31,9 +31,9 @@ export default async function TenantsPage({
 
   const tenancies = (data ?? []) as unknown as TenancyRow[];
   if (view === "current") {
-    // Current tab reads like the building: room numbers, highest first.
+    // Current tab reads like the building: room numbers, lowest first.
     tenancies.sort((a, b) =>
-      (b.room?.room_number ?? "").localeCompare(a.room?.room_number ?? "", undefined, {
+      (a.room?.room_number ?? "").localeCompare(b.room?.room_number ?? "", undefined, {
         numeric: true,
       })
     );
