@@ -23,7 +23,7 @@ export default async function ExpensesPage() {
   const { data } = await supabase
     .from("expenses")
     .select(
-      "id, category, amount, description, expense_date, status, is_common_area, bill_image_url, item_image_url, room:rooms(room_number)"
+      "id, category, amount, description, expense_date, status, is_common_area, bill_image_url, item_image_url, room:rooms(room_number), moveout:move_outs(contract:contracts(room:rooms(room_number)))"
     )
     .order("expense_date", { ascending: false })
     .order("created_at", { ascending: false })
@@ -40,6 +40,9 @@ export default async function ExpensesPage() {
     bill_image_url: string | null;
     item_image_url: string | null;
     room: { room_number: string } | null;
+    moveout: {
+      contract: { room: { room_number: string } | null } | null;
+    } | null;
   }>;
 
   const rows: ExpenseRow[] = await Promise.all(
@@ -48,7 +51,12 @@ export default async function ExpensesPage() {
       category: e.category,
       amount: String(e.amount),
       description: e.description ?? "",
-      room: e.is_common_area ? t("commonArea") : e.room?.room_number ?? "—",
+      // A deposit-return expense knows its room only through the move-out,
+      // so resolve that before falling back to the common-area label.
+      room:
+        e.room?.room_number ??
+        e.moveout?.contract?.room?.room_number ??
+        (e.is_common_area ? t("commonArea") : "—"),
       date: e.expense_date,
       status: e.status,
       billUrl: await signedUrl(EXPENSE_MEDIA_BUCKET, e.bill_image_url),

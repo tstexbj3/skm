@@ -159,11 +159,23 @@ export async function completeMoveout(_prev: MoveoutState, formData: FormData) {
   const refund = n(data[0].damage_deposit_refund);
   if (refund > 0) {
     await supabase.from("move_outs").update({ deposit_refunded: true }).eq("id", id);
+    const { data: con } = await supabase
+      .from("contracts")
+      .select("room_id, room:rooms(room_number)")
+      .eq("id", data[0].contract_id)
+      .single();
+    const room = con as unknown as {
+      room_id: string;
+      room: { room_number: string } | null;
+    } | null;
     await supabase.from("expenses").insert({
       category: "DEPOSIT_RETURN",
       amount: refund,
-      description: "คืนเงินมัดจำ",
-      is_common_area: true,
+      description: room?.room?.room_number
+        ? `คืนเงินมัดจำ ห้อง ${room.room.room_number}`
+        : "คืนเงินมัดจำ",
+      room_id: room?.room_id ?? null,
+      is_common_area: !room?.room_id,
       moveout_id: id,
       expense_date: new Date().toISOString().slice(0, 10),
       status: "PENDING_APPROVAL",
