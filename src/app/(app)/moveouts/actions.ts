@@ -28,8 +28,14 @@ export async function notifyMoveout(
   const contract_id = String(formData.get("contract_id") ?? "");
   const move_out_date = String(formData.get("move_out_date") ?? "");
   if (!contract_id || !move_out_date) return { error: "invalid" };
-  const notice_date = new Date().toISOString().slice(0, 10);
+  // Notice date comes from the form so past move-outs can be recorded
+  // retroactively; it defaults to today and may never be after the move-out.
+  const rawNotice = String(formData.get("notice_date") ?? "");
+  const notice_date = /^\d{4}-\d{2}-\d{2}$/.test(rawNotice)
+    ? rawNotice
+    : new Date().toISOString().slice(0, 10);
   const days = daysBetween(notice_date, move_out_date);
+  if (days < 0) return { error: "invalid" };
 
   const { data: c } = await supabase
     .from("contracts")

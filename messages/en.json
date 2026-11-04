@@ -150,6 +150,8 @@
     "currentTab": "Current",
     "pastTab": "Past",
     "noVacant": "No vacant rooms available to sign",
+    "pendingMoveoutHint": "Room {rooms} pending move-out — a room becomes vacant for a new contract once its move-out is approved and completed on the move-outs page",
+    "goToMoveouts": "Go to move-outs",
     "tenancy": "Tenancy",
     "room": "Room",
     "selectRoom": "Select a room",
@@ -497,7 +499,7 @@
   "moveouts": {
     "title": "Move-outs",
     "notify": "Notify move-out",
-    "notifyHint": "At least 30 days notice is required; less than that means no deposit refund.",
+    "notifyHint": "At least 30 days notice is required; less than that means no deposit refund. Past move-outs can be recorded by picking past dates.",
     "tenant": "Tenant",
     "moveOutDate": "Move-out date",
     "room": "Room",

@@ -84,7 +84,7 @@ export function MoveoutBoard({
         <CardContent>
           <form
             action={(fd) => run(notifyMoveout, fd)}
-            className="grid gap-3 sm:grid-cols-3"
+            className="grid gap-3 sm:grid-cols-4"
           >
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="contract_id" className="text-xs">
@@ -100,12 +100,25 @@ export function MoveoutBoard({
               </select>
             </div>
             <div className="space-y-1">
+              <Label htmlFor="notice_date" className="text-xs">
+                {t("noticeDate")}
+              </Label>
+              <Input
+                id="notice_date"
+                name="notice_date"
+                type="date"
+                defaultValue={today}
+                max={today}
+                required
+              />
+            </div>
+            <div className="space-y-1">
               <Label htmlFor="move_out_date" className="text-xs">
                 {t("moveOutDate")}
               </Label>
-              <Input id="move_out_date" name="move_out_date" type="date" min={today} required />
+              <Input id="move_out_date" name="move_out_date" type="date" required />
             </div>
-            <div className="sm:col-span-3">
+            <div className="sm:col-span-4">
               <Button size="sm" disabled={pending} type="submit">
                 <LogOut className="size-4" />
                 {t("notify")}
