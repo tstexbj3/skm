@@ -16,6 +16,8 @@ export type BillRow = {
   contractId: string;
   room: string;
   tenant: string;
+  /** The bill's contract has ended — its tenant already moved out. */
+  ended?: boolean;
   bill: {
     id: string;
     status: string;
@@ -133,7 +135,10 @@ export function BillingBoard({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.contractId} className="border-t">
+              <tr
+                key={row.bill?.id ?? row.contractId}
+                className={cn("border-t", row.ended && "bg-amber-50/60 dark:bg-amber-950/20")}
+              >
                 <td className="px-2 py-2">
                   {row.bill && (
                     <input
@@ -145,7 +150,14 @@ export function BillingBoard({
                   )}
                 </td>
                 <td className="px-4 py-2 font-medium">{row.room}</td>
-                <td className="px-4 py-2">{row.tenant}</td>
+                <td className="px-4 py-2">
+                  {row.tenant}
+                  {row.ended && (
+                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                      {t("movedOut")}
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   {row.bill ? (
                     <span

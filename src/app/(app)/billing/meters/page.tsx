@@ -19,7 +19,7 @@ export default async function MetersPage({
   const { data } = await supabase
     .from("bills")
     .select(
-      "id, room_number, payer_name, water_billing_mode, water_start, water_end, elec_start, elec_end, elec_is_manual, meter_digits"
+      "id, room_number, payer_name, water_billing_mode, water_start, water_end, elec_start, elec_end, elec_is_manual, meter_digits, contract:contracts(status)"
     )
     .eq("billing_month", billing_month)
     .eq("status", "DRAFT");
@@ -35,6 +35,7 @@ export default async function MetersPage({
     elec_end: string;
     elec_is_manual: boolean;
     meter_digits: number;
+    contract: { status: string } | null;
   }>;
 
   const rows: MeterRow[] = raw
@@ -42,6 +43,7 @@ export default async function MetersPage({
       billId: b.id,
       room: b.room_number,
       payer: b.payer_name,
+      movedOut: b.contract != null && b.contract.status !== "ACTIVE",
       waterMode: b.water_billing_mode,
       waterStart: Number(b.water_start),
       waterEnd: Number(b.water_end),

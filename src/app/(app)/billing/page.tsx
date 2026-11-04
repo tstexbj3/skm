@@ -21,7 +21,7 @@ export default async function BillingPage({
     .eq("status", "ACTIVE");
   const { data: billsData } = await supabase
     .from("bills")
-    .select("id, contract_id, status, total_amount")
+    .select("id, contract_id, status, total_amount, room_number, payer_name")
     .eq("billing_month", billing_month);
 
   // Approved/reconciled payments per bill → paid amount for the list view.
@@ -52,25 +52,46 @@ export default async function BillingPage({
     tenant: { full_name: string } | null;
   }>;
 
-  const rows: BillRow[] = contracts
-    .map((c) => {
-      const b = billMap.get(c.id);
-      return {
-        contractId: c.id,
-        room: c.room?.room_number ?? "—",
-        tenant: c.tenant?.full_name ?? "—",
-        bill: b
-          ? {
-              id: b.id as string,
-              status: b.status as string,
-              total: String(b.total_amount),
-              paid: paidByBill.get(b.id as string) ?? 0,
-              awaiting: awaitingByBill.get(b.id as string) ?? 0,
-            }
-          : null,
-      };
-    })
-    .sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }));
+  const contractRows: BillRow[] = contracts.map((c) => {
+    const b = billMap.get(c.id);
+    return {
+      contractId: c.id,
+      room: c.room?.room_number ?? "—",
+      tenant: c.tenant?.full_name ?? "—",
+      bill: b
+        ? {
+            id: b.id as string,
+            status: b.status as string,
+            total: String(b.total_amount),
+            paid: paidByBill.get(b.id as string) ?? 0,
+            awaiting: awaitingByBill.get(b.id as string) ?? 0,
+          }
+        : null,
+    };
+  });
+
+  // Bills whose contract has since ended (tenant moved out) would otherwise
+  // be invisible here while still cluttering meters/print — show them labeled.
+  const activeIds = new Set(contracts.map((c) => c.id));
+  const endedRows: BillRow[] = (billsData ?? [])
+    .filter((b) => !activeIds.has(b.contract_id as string))
+    .map((b) => ({
+      contractId: b.contract_id as string,
+      room: (b.room_number as string) || "—",
+      tenant: (b.payer_name as string) || "—",
+      ended: true,
+      bill: {
+        id: b.id as string,
+        status: b.status as string,
+        total: String(b.total_amount),
+        paid: paidByBill.get(b.id as string) ?? 0,
+        awaiting: awaitingByBill.get(b.id as string) ?? 0,
+      },
+    }));
+
+  const rows: BillRow[] = [...contractRows, ...endedRows].sort((a, b) =>
+    a.room.localeCompare(b.room, undefined, { numeric: true })
+  );
 
   const t = await getTranslations("billing");
 

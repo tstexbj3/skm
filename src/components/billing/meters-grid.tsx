@@ -14,6 +14,8 @@ export type MeterRow = {
   billId: string;
   room: string;
   payer: string;
+  /** The bill's contract has ended — its tenant already moved out. */
+  movedOut: boolean;
   waterMode: string; // PER_PERSON | PER_UNIT | FLAT
   waterStart: number;
   waterEnd: number;
@@ -142,7 +144,14 @@ export function MetersGrid({
               return (
                 <tr key={r.billId} className="border-t">
                   <td className="px-3 py-2 font-medium">{r.room}</td>
-                  <td className="px-3 py-2">{r.payer}</td>
+                  <td className="px-3 py-2">
+                    {r.payer}
+                    {r.movedOut && (
+                      <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                        {t("movedOut")}
+                      </span>
+                    )}
+                  </td>
                   {/* electricity start */}
                   <td className="px-3 py-2">
                     {r.elecManual ? (
