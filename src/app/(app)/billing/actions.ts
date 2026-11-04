@@ -31,7 +31,7 @@ async function createDraftBill(
   const { data: c } = await supabase
     .from("contracts")
     .select(
-      "id, occupant_count, tenant:tenants(full_name), room:rooms(id, room_number, rent_rate, water_billing_mode, water_rate)"
+      "id, occupant_count, tenant:tenants(full_name), room:rooms(id, room_number, rent_rate, water_billing_mode, water_rate, occupant_count)"
     )
     .eq("id", contractId)
     .single();
@@ -44,6 +44,7 @@ async function createDraftBill(
       rent_rate: string;
       water_billing_mode: WaterMode;
       water_rate: string;
+      occupant_count: number;
     } | null;
   } | null;
   if (!contract?.room) return { error: "not_found" };
@@ -83,7 +84,10 @@ async function createDraftBill(
     we = 0;
   if (mode === "PER_PERSON") {
     water_rate = waterPersonRate;
-    water_persons = contract.occupant_count;
+    // The room's occupant count is the live "who lives here now" number
+    // (edited on the rooms page); the contract's count is its fallback.
+    water_persons =
+      n(room.occupant_count) > 0 ? n(room.occupant_count) : contract.occupant_count;
   } else if (mode === "FLAT") {
     water_rate = n(room.water_rate);
   } else {
@@ -224,7 +228,7 @@ async function refreshDraftBills(
   const { data: billsData } = await supabase
     .from("bills")
     .select(
-      "id, water_billing_mode, water_rate, water_vat_rate, water_persons, water_start, water_end, water_amount, elec_unit_rate, elec_vat_rate, elec_start, elec_end, elec_min_charge, elec_is_manual, elec_amount, meter_digits, rent_amount, late_fee_amount, other_charge_amount, total_amount, contract:contracts(room:rooms(rent_rate, water_rate))"
+      "id, water_billing_mode, water_rate, water_vat_rate, water_persons, water_start, water_end, water_amount, elec_unit_rate, elec_vat_rate, elec_start, elec_end, elec_min_charge, elec_is_manual, elec_amount, meter_digits, rent_amount, late_fee_amount, other_charge_amount, total_amount, contract:contracts(occupant_count, room:rooms(rent_rate, water_rate, occupant_count))"
     )
     .eq("billing_month", billing_month)
     .eq("status", "DRAFT");
@@ -249,7 +253,14 @@ async function refreshDraftBills(
     late_fee_amount: string;
     other_charge_amount: string;
     total_amount: string;
-    contract: { room: { rent_rate: string; water_rate: string } | null } | null;
+    contract: {
+      occupant_count: number;
+      room: {
+        rent_rate: string;
+        water_rate: string;
+        occupant_count: number;
+      } | null;
+    } | null;
   }>;
   if (!bills.length) return 0;
 
@@ -276,10 +287,20 @@ async function refreshDraftBills(
     const rent = n(room.rent_rate);
     const water_rate = mode === "PER_PERSON" ? waterPersonRate : n(room.water_rate);
     const water_vat = mode === "PER_UNIT" ? vat : 0;
+    // PER_PERSON bills re-sync the person count: room first (edited on the
+    // rooms page), contract as fallback, keeping the bill's own as last resort.
+    const water_persons =
+      mode === "PER_PERSON"
+        ? n(room.occupant_count) > 0
+          ? n(room.occupant_count)
+          : n(b.contract?.occupant_count) > 0
+            ? n(b.contract?.occupant_count)
+            : n(b.water_persons)
+        : n(b.water_persons);
     const water_amount = computeWater({
       mode,
       rate: water_rate,
-      persons: n(b.water_persons),
+      persons: water_persons,
       start: n(b.water_start),
       end: n(b.water_end),
       vat: water_vat,
@@ -309,6 +330,7 @@ async function refreshDraftBills(
       rent !== n(b.rent_amount) ||
       water_rate !== n(b.water_rate) ||
       water_vat !== n(b.water_vat_rate) ||
+      water_persons !== n(b.water_persons) ||
       water_amount !== n(b.water_amount) ||
       elecRate !== n(b.elec_unit_rate) ||
       vat !== n(b.elec_vat_rate) ||
@@ -324,6 +346,7 @@ async function refreshDraftBills(
         rent_amount: rent,
         water_rate,
         water_vat_rate: water_vat,
+        water_persons,
         water_amount,
         elec_unit_rate: elecRate,
         elec_vat_rate: vat,
