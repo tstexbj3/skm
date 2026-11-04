@@ -70,7 +70,7 @@ export default async function BillingPage({
           : null,
       };
     })
-    .sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }));
+    .sort((a, b) => b.room.localeCompare(a.room, undefined, { numeric: true }));
 
   const t = await getTranslations("billing");
 
