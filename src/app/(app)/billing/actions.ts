@@ -201,13 +201,18 @@ async function createDraftBill(
 }
 
 /**
- * Refresh rate snapshots on this month's DRAFT bills from the current
- * settings (utility rates + room rents) and recompute their amounts.
- * Meter readings, persons, late fees, other charges and line items are kept.
- * Bills past DRAFT are immutable snapshots and are never touched.
+ * Make this month's DRAFT bills match reality. Every value a bill copies at
+ * creation is re-read and the amounts recomputed: tenant name, room number,
+ * rent, water mode/rate/person count, utility rates, VAT, minimum charge,
+ * meter digits, opening meter readings (from the previous bill's closing
+ * readings) and recurring charges (added, re-priced or voided on the bill's
+ * line items). What the admin typed by hand survives: closing meter
+ * readings, manual electricity amounts, late fees, other charges, ad-hoc
+ * line items and notes. Bills past DRAFT are immutable and never touched.
  */
 async function refreshDraftBills(
   supabase: DB,
+  userId: string,
   billing_month: string
 ): Promise<number> {
   const { data: rates } = await supabase
@@ -228,12 +233,15 @@ async function refreshDraftBills(
   const { data: billsData } = await supabase
     .from("bills")
     .select(
-      "id, water_billing_mode, water_rate, water_vat_rate, water_persons, water_start, water_end, water_amount, elec_unit_rate, elec_vat_rate, elec_start, elec_end, elec_min_charge, elec_is_manual, elec_amount, meter_digits, rent_amount, late_fee_amount, other_charge_amount, total_amount, contract:contracts(occupant_count, room:rooms(rent_rate, water_rate, occupant_count))"
+      "id, contract_id, payer_name, room_number, water_billing_mode, water_rate, water_vat_rate, water_persons, water_start, water_end, water_amount, elec_unit_rate, elec_vat_rate, elec_start, elec_end, elec_min_charge, elec_is_manual, elec_amount, meter_digits, rent_amount, late_fee_amount, other_charge_amount, total_amount, contract:contracts(occupant_count, tenant:tenants(full_name), room:rooms(room_number, rent_rate, water_rate, water_billing_mode, occupant_count))"
     )
     .eq("billing_month", billing_month)
     .eq("status", "DRAFT");
   const bills = (billsData ?? []) as unknown as Array<{
     id: string;
+    contract_id: string;
+    payer_name: string;
+    room_number: string;
     water_billing_mode: WaterMode;
     water_rate: string;
     water_vat_rate: string;
@@ -255,53 +263,180 @@ async function refreshDraftBills(
     total_amount: string;
     contract: {
       occupant_count: number;
+      tenant: { full_name: string } | null;
       room: {
+        room_number: string;
         rent_rate: string;
         water_rate: string;
+        water_billing_mode: WaterMode;
         occupant_count: number;
       } | null;
     } | null;
   }>;
   if (!bills.length) return 0;
 
-  const { data: items } = await supabase
+  const billIds = bills.map((b) => b.id);
+  const contractIds = [...new Set(bills.map((b) => b.contract_id))];
+
+  // Opening readings follow the previous bill's closing readings.
+  const { data: prevData } = await supabase
+    .from("bills")
+    .select("contract_id, billing_month, elec_end, water_end")
+    .in("contract_id", contractIds)
+    .lt("billing_month", billing_month)
+    .order("billing_month", { ascending: false });
+  const prevByContract = new Map<string, { elec_end: string; water_end: string }>();
+  for (const p of prevData ?? []) {
+    const k = p.contract_id as string;
+    if (!prevByContract.has(k))
+      prevByContract.set(k, {
+        elec_end: String(p.elec_end),
+        water_end: String(p.water_end),
+      });
+  }
+
+  const { data: recData } = await supabase
+    .from("recurring_charges")
+    .select("id, contract_id, label, amount")
+    .in("contract_id", contractIds)
+    .eq("active", true);
+  const recurringByContract = new Map<
+    string,
+    Array<{ id: string; label: string; amount: string }>
+  >();
+  for (const r of recData ?? []) {
+    const k = r.contract_id as string;
+    const list = recurringByContract.get(k) ?? [];
+    list.push({ id: r.id as string, label: r.label as string, amount: String(r.amount) });
+    recurringByContract.set(k, list);
+  }
+
+  type Item = {
+    id: string;
+    bill_id: string;
+    label: string;
+    amount: string;
+    include_in_total: boolean;
+    status: string;
+    source_recurring: string | null;
+  };
+  const { data: itemsData } = await supabase
     .from("bill_line_items")
-    .select("bill_id, amount, include_in_total, status")
-    .in(
-      "bill_id",
-      bills.map((b) => b.id)
-    );
-  const lineTotals = new Map<string, number>();
-  for (const it of items ?? []) {
-    if (it.include_in_total && it.status === "ACTIVE") {
-      const k = it.bill_id as string;
-      lineTotals.set(k, (lineTotals.get(k) ?? 0) + n(it.amount));
-    }
+    .select("id, bill_id, label, amount, include_in_total, status, source_recurring")
+    .in("bill_id", billIds);
+  const itemsByBill = new Map<string, Item[]>();
+  for (const it of (itemsData ?? []) as Item[]) {
+    const list = itemsByBill.get(it.bill_id) ?? [];
+    list.push(it);
+    itemsByBill.set(it.bill_id, list);
   }
 
   let updated = 0;
   for (const b of bills) {
-    const room = b.contract?.room;
+    const contract = b.contract;
+    const room = contract?.room;
     if (!room) continue;
-    const mode = b.water_billing_mode;
+
+    // Sync recurring charges onto the bill's line items: add new ones,
+    // re-price renamed/changed ones, void those switched off or removed.
+    let itemsChanged = false;
+    const billItems = itemsByBill.get(b.id) ?? [];
+    const recs = recurringByContract.get(b.contract_id) ?? [];
+    const bySource = new Map(
+      billItems
+        .filter((i) => i.source_recurring)
+        .map((i) => [i.source_recurring as string, i])
+    );
+    for (const rc of recs) {
+      const it = bySource.get(rc.id);
+      if (!it) {
+        const { error } = await supabase.from("bill_line_items").insert({
+          bill_id: b.id,
+          label: rc.label,
+          amount: n(rc.amount),
+          include_in_total: true,
+          source_recurring: rc.id,
+          created_by: userId,
+        });
+        if (!error) {
+          billItems.push({
+            id: "",
+            bill_id: b.id,
+            label: rc.label,
+            amount: rc.amount,
+            include_in_total: true,
+            status: "ACTIVE",
+            source_recurring: rc.id,
+          });
+          itemsChanged = true;
+        }
+      } else if (
+        it.status === "ACTIVE" &&
+        (it.label !== rc.label || n(it.amount) !== n(rc.amount))
+      ) {
+        const { error } = await supabase
+          .from("bill_line_items")
+          .update({ label: rc.label, amount: n(rc.amount) })
+          .eq("id", it.id);
+        if (!error) {
+          it.label = rc.label;
+          it.amount = rc.amount;
+          itemsChanged = true;
+        }
+      }
+    }
+    const activeRecIds = new Set(recs.map((r) => r.id));
+    for (const it of billItems) {
+      if (
+        it.source_recurring &&
+        it.status === "ACTIVE" &&
+        !activeRecIds.has(it.source_recurring)
+      ) {
+        const { error } = await supabase
+          .from("bill_line_items")
+          .update({
+            status: "VOID",
+            voided_by: userId,
+            voided_at: new Date().toISOString(),
+          })
+          .eq("id", it.id);
+        if (!error) {
+          it.status = "VOID";
+          itemsChanged = true;
+        }
+      }
+    }
+    const lineItemsTotal = billItems
+      .filter((i) => i.include_in_total && i.status === "ACTIVE")
+      .reduce((s, i) => s + n(i.amount), 0);
+
+    // Re-read everything the bill snapshots.
+    const mode = room.water_billing_mode;
+    const payer_name = contract?.tenant?.full_name || b.payer_name;
+    const room_number = room.room_number || b.room_number;
     const rent = n(room.rent_rate);
     const water_rate = mode === "PER_PERSON" ? waterPersonRate : n(room.water_rate);
     const water_vat = mode === "PER_UNIT" ? vat : 0;
-    // PER_PERSON bills re-sync the person count: room first (edited on the
-    // rooms page), contract as fallback, keeping the bill's own as last resort.
+    // Person count: the room is the live number (edited on the rooms page),
+    // the contract and the bill itself are fallbacks.
     const water_persons =
       mode === "PER_PERSON"
         ? n(room.occupant_count) > 0
           ? n(room.occupant_count)
-          : n(b.contract?.occupant_count) > 0
-            ? n(b.contract?.occupant_count)
+          : n(contract?.occupant_count) > 0
+            ? n(contract?.occupant_count)
             : n(b.water_persons)
-        : n(b.water_persons);
+        : 0;
+    const prev = prevByContract.get(b.contract_id);
+    const elec_start = !b.elec_is_manual && prev ? n(prev.elec_end) : n(b.elec_start);
+    const water_start =
+      mode === "PER_UNIT" && prev ? n(prev.water_end) : n(b.water_start);
+
     const water_amount = computeWater({
       mode,
       rate: water_rate,
       persons: water_persons,
-      start: n(b.water_start),
+      start: water_start,
       end: n(b.water_end),
       vat: water_vat,
       digits: meterDigits,
@@ -310,7 +445,7 @@ async function refreshDraftBills(
     const elec_amount = b.elec_is_manual
       ? n(b.elec_amount)
       : computeElectricity({
-          start: n(b.elec_start),
+          start: elec_start,
           end: n(b.elec_end),
           rate: elecRate,
           vat,
@@ -323,42 +458,55 @@ async function refreshDraftBills(
       electricity: elec_amount,
       lateFee: n(b.late_fee_amount),
       other: n(b.other_charge_amount),
-      lineItems: lineTotals.get(b.id) ?? 0,
+      lineItems: lineItemsTotal,
     });
 
     const changed =
+      payer_name !== b.payer_name ||
+      room_number !== b.room_number ||
+      mode !== b.water_billing_mode ||
       rent !== n(b.rent_amount) ||
       water_rate !== n(b.water_rate) ||
       water_vat !== n(b.water_vat_rate) ||
       water_persons !== n(b.water_persons) ||
+      water_start !== n(b.water_start) ||
       water_amount !== n(b.water_amount) ||
       elecRate !== n(b.elec_unit_rate) ||
       vat !== n(b.elec_vat_rate) ||
       elecMin !== n(b.elec_min_charge) ||
       meterDigits !== n(b.meter_digits) ||
+      elec_start !== n(b.elec_start) ||
       elec_amount !== n(b.elec_amount) ||
       total !== n(b.total_amount);
-    if (!changed) continue;
+    if (!changed) {
+      if (itemsChanged) updated++;
+      continue;
+    }
 
     const { data, error } = await supabase
       .from("bills")
       .update({
+        payer_name,
+        room_number,
+        water_billing_mode: mode,
         rent_amount: rent,
         water_rate,
         water_vat_rate: water_vat,
         water_persons,
+        water_start,
         water_amount,
         elec_unit_rate: elecRate,
         elec_vat_rate: vat,
         elec_min_charge: elecMin,
         meter_digits: meterDigits,
+        elec_start,
         elec_amount,
         total_amount: total,
       })
       .eq("id", b.id)
       .eq("status", "DRAFT")
       .select("id");
-    if (!error && data && data.length) updated++;
+    if ((!error && data && data.length) || itemsChanged) updated++;
   }
   return updated;
 }
@@ -423,7 +571,7 @@ export async function generateAllBills(
     if (res.id) created++;
   }
 
-  const updated = await refreshDraftBills(supabase, billing_month);
+  const updated = await refreshDraftBills(supabase, user.id, billing_month);
 
   revalidatePath("/billing");
   return { ok: true, created, updated };
