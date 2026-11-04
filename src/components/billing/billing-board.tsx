@@ -37,9 +37,11 @@ export function BillingBoard({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   function gen(contractId: string) {
     setError(null);
+    setNotice(null);
     startTransition(async () => {
       const res = await generateBill(contractId, month);
       if (res?.error)
@@ -49,10 +51,18 @@ export function BillingBoard({
 
   function genAll() {
     setError(null);
+    setNotice(null);
     startTransition(async () => {
       const res = await generateAllBills(month);
       if (res?.error)
         setError(t.has(`errors.${res.error}`) ? t(`errors.${res.error}`) : res.error);
+      else
+        setNotice(
+          t("generateAllDone", {
+            created: res?.created ?? 0,
+            updated: res?.updated ?? 0,
+          })
+        );
     });
   }
 
@@ -106,6 +116,7 @@ export function BillingBoard({
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {notice && <p className="text-sm text-emerald-600">{notice}</p>}
 
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">

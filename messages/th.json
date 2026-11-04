@@ -263,6 +263,7 @@
     "amount": "จำนวนเงิน",
     "minCharge": "ขั้นต่ำ",
     "generateAll": "สร้างบิลทั้งหมด",
+    "generateAllDone": "สร้างบิลใหม่ {created} ใบ · อัปเดตอัตราในบิลร่างเดิม {updated} ใบ",
     "printAll": "พิมพ์ทั้งหมด",
     "paidFull": "ชำระครบ",
     "owe": "ค้าง",

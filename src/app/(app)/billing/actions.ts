@@ -196,6 +196,150 @@ async function createDraftBill(
   return { id: bill.id };
 }
 
+/**
+ * Refresh rate snapshots on this month's DRAFT bills from the current
+ * settings (utility rates + room rents) and recompute their amounts.
+ * Meter readings, persons, late fees, other charges and line items are kept.
+ * Bills past DRAFT are immutable snapshots and are never touched.
+ */
+async function refreshDraftBills(
+  supabase: DB,
+  billing_month: string
+): Promise<number> {
+  const { data: rates } = await supabase
+    .from("utility_rates")
+    .select(
+      "electricity_unit_rate, vat_rate, water_person_rate, electricity_min_charge, meter_digits"
+    )
+    .order("effective_from", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const elecRate = n(rates?.electricity_unit_rate);
+  const vat = n(rates?.vat_rate);
+  const waterPersonRate = n(rates?.water_person_rate ?? 100);
+  const elecMin = n(rates?.electricity_min_charge ?? 200);
+  const meterDigits = n(rates?.meter_digits);
+
+  const { data: billsData } = await supabase
+    .from("bills")
+    .select(
+      "id, water_billing_mode, water_rate, water_vat_rate, water_persons, water_start, water_end, water_amount, elec_unit_rate, elec_vat_rate, elec_start, elec_end, elec_min_charge, elec_is_manual, elec_amount, meter_digits, rent_amount, late_fee_amount, other_charge_amount, total_amount, contract:contracts(room:rooms(rent_rate, water_rate))"
+    )
+    .eq("billing_month", billing_month)
+    .eq("status", "DRAFT");
+  const bills = (billsData ?? []) as unknown as Array<{
+    id: string;
+    water_billing_mode: WaterMode;
+    water_rate: string;
+    water_vat_rate: string;
+    water_persons: number;
+    water_start: string;
+    water_end: string;
+    water_amount: string;
+    elec_unit_rate: string;
+    elec_vat_rate: string;
+    elec_start: string;
+    elec_end: string;
+    elec_min_charge: string;
+    elec_is_manual: boolean;
+    elec_amount: string;
+    meter_digits: number;
+    rent_amount: string;
+    late_fee_amount: string;
+    other_charge_amount: string;
+    total_amount: string;
+    contract: { room: { rent_rate: string; water_rate: string } | null } | null;
+  }>;
+  if (!bills.length) return 0;
+
+  const { data: items } = await supabase
+    .from("bill_line_items")
+    .select("bill_id, amount, include_in_total, status")
+    .in(
+      "bill_id",
+      bills.map((b) => b.id)
+    );
+  const lineTotals = new Map<string, number>();
+  for (const it of items ?? []) {
+    if (it.include_in_total && it.status === "ACTIVE") {
+      const k = it.bill_id as string;
+      lineTotals.set(k, (lineTotals.get(k) ?? 0) + n(it.amount));
+    }
+  }
+
+  let updated = 0;
+  for (const b of bills) {
+    const room = b.contract?.room;
+    if (!room) continue;
+    const mode = b.water_billing_mode;
+    const rent = n(room.rent_rate);
+    const water_rate = mode === "PER_PERSON" ? waterPersonRate : n(room.water_rate);
+    const water_vat = mode === "PER_UNIT" ? vat : 0;
+    const water_amount = computeWater({
+      mode,
+      rate: water_rate,
+      persons: n(b.water_persons),
+      start: n(b.water_start),
+      end: n(b.water_end),
+      vat: water_vat,
+      digits: meterDigits,
+    });
+    // A manually-entered electricity amount is the admin's number — keep it.
+    const elec_amount = b.elec_is_manual
+      ? n(b.elec_amount)
+      : computeElectricity({
+          start: n(b.elec_start),
+          end: n(b.elec_end),
+          rate: elecRate,
+          vat,
+          digits: meterDigits,
+          minCharge: elecMin,
+        });
+    const total = computeTotal({
+      rent,
+      water: water_amount,
+      electricity: elec_amount,
+      lateFee: n(b.late_fee_amount),
+      other: n(b.other_charge_amount),
+      lineItems: lineTotals.get(b.id) ?? 0,
+    });
+
+    const changed =
+      rent !== n(b.rent_amount) ||
+      water_rate !== n(b.water_rate) ||
+      water_vat !== n(b.water_vat_rate) ||
+      water_amount !== n(b.water_amount) ||
+      elecRate !== n(b.elec_unit_rate) ||
+      vat !== n(b.elec_vat_rate) ||
+      elecMin !== n(b.elec_min_charge) ||
+      meterDigits !== n(b.meter_digits) ||
+      elec_amount !== n(b.elec_amount) ||
+      total !== n(b.total_amount);
+    if (!changed) continue;
+
+    const { data, error } = await supabase
+      .from("bills")
+      .update({
+        rent_amount: rent,
+        water_rate,
+        water_vat_rate: water_vat,
+        water_amount,
+        elec_unit_rate: elecRate,
+        elec_vat_rate: vat,
+        elec_min_charge: elecMin,
+        meter_digits: meterDigits,
+        elec_amount,
+        total_amount: total,
+      })
+      .eq("id", b.id)
+      .eq("status", "DRAFT")
+      .select("id");
+    if (!error && data && data.length) updated++;
+  }
+  return updated;
+}
+
 /** Generate one DRAFT bill for a contract + month, then open it. */
 export async function generateBill(
   contractId: string,
@@ -218,10 +362,14 @@ export async function generateBill(
   redirect(`/billing/${res.id}`);
 }
 
-/** Generate DRAFT bills for every active tenancy that has no bill this month. */
+/**
+ * Generate DRAFT bills for every active tenancy that has no bill this month,
+ * then refresh the rate snapshots on all of this month's DRAFT bills so a
+ * rate fixed after generating is picked up by pressing the button again.
+ */
 export async function generateAllBills(
   month: string
-): Promise<BillActionState & { created?: number }> {
+): Promise<BillActionState & { created?: number; updated?: number }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -252,8 +400,10 @@ export async function generateAllBills(
     if (res.id) created++;
   }
 
+  const updated = await refreshDraftBills(supabase, billing_month);
+
   revalidatePath("/billing");
-  return { ok: true, created };
+  return { ok: true, created, updated };
 }
 
 /** Edit a DRAFT bill (meter ends, late fee, other, note) and recompute totals. */

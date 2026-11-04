@@ -263,6 +263,7 @@
     "amount": "Amount",
     "minCharge": "Min",
     "generateAll": "Generate all",
+    "generateAllDone": "Created {created} new bills · refreshed rates on {updated} drafts",
     "printAll": "Print all",
     "paidFull": "Paid in full",
     "owe": "Remaining",
