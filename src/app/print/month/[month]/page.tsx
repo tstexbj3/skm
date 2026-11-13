@@ -78,7 +78,7 @@ export default async function PrintMonthPage({
   const t = await getTranslations("billing");
 
   return (
-    <div className="mx-auto max-w-2xl bg-white p-8">
+    <div className="mx-auto max-w-2xl bg-white p-8 print:max-w-none print:p-0">
       <div className="mb-4 flex items-center justify-between print:hidden">
         <span className="text-sm text-muted-foreground">
           {month} · {billList.length}
@@ -92,7 +92,7 @@ export default async function PrintMonthPage({
         billList.map((bill) => (
           <div
             key={bill.id as string}
-            className="mb-6 break-after-page last:mb-0 last:break-after-auto"
+            className="mb-6 break-after-page last:mb-0 last:break-after-auto print:mb-0"
           >
             <Invoice
               bill={bill}

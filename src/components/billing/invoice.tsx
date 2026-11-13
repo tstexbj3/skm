@@ -63,7 +63,7 @@ export function Invoice({
   for (const it of items) rows.push({ label: it.label, amount: n(it.amount) });
 
   return (
-    <div className="border-2 border-black p-6 text-black">
+    <div className="border-2 border-black p-6 text-black print:p-4">
       <div className="mb-1 flex items-start justify-between">
         <div>
           <div className="text-xl font-bold">
@@ -98,13 +98,13 @@ export function Invoice({
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} className="border-b border-dashed border-gray-400">
-              <td className="py-2">
+              <td className="py-2 print:py-1">
                 {r.label}
                 {r.sub && (
                   <span className="ml-2 text-xs text-gray-600">{r.sub}</span>
                 )}
               </td>
-              <td className="py-2 text-right tabular-nums">
+              <td className="py-2 text-right tabular-nums print:py-1">
                 {formatMoney2(r.amount)} {t("baht")}
               </td>
             </tr>
@@ -140,7 +140,7 @@ export function Invoice({
         </div>
       )}
 
-      <div className="mt-6 flex items-end justify-between text-sm">
+      <div className="mt-6 flex items-end justify-between text-sm print:mt-4">
         <div>
           {t("note")}: {(bill.note as string) ?? ""}
         </div>

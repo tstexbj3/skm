@@ -60,7 +60,7 @@ export default async function PrintBillPage({
   const t = await getTranslations("billing");
 
   return (
-    <div className="mx-auto max-w-2xl bg-white p-8">
+    <div className="mx-auto max-w-2xl bg-white p-8 print:max-w-none print:p-0">
       <div className="mb-4 flex justify-end print:hidden">
         <PrintButton label={t("print")} billId={id} />
       </div>
